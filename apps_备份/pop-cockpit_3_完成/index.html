@@ -1,0 +1,187 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>中国人口版图驾驶舱</title>
+<!-- D4-1 参考答案（第二轮）：数据只读 ./data.js；ECharts 与地图读本地 ../../assets/，不走 CDN。
+     本地起服务：在项目根目录 python3 -m http.server 8000，打开 http://localhost:8000/apps/pop-cockpit/
+     深链：?tab=overview|flow|cluster&p=广东省&ind=pop|net|density&y=2023 -->
+<style>
+  :root{--bg:#06112a;--panel:#0b1d3f;--line:#1b3a6b;--ink:#e6efff;--muted:#8ea3c7;--main:#36c3ff;--acc:#ffb547;--red:#ff6b6b;--blue:#4c8dff}
+  html,body{margin:0;height:100%;background:var(--bg);overflow:hidden;font-family:"PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;color:var(--ink)}
+  #stage{width:1920px;height:1080px;transform-origin:0 0;position:absolute;left:0;top:0}
+  header{height:84px;display:flex;align-items:center;padding:0 28px;border-bottom:1px solid var(--line);gap:18px}
+  header h1{font-size:34px;margin:0;letter-spacing:2px}
+  header .sub{color:var(--muted);font-size:15px;margin-right:auto}
+  header select,header button{background:var(--panel);color:var(--ink);border:1px solid var(--line);border-radius:6px;font-size:17px;padding:6px 12px}
+  header button{cursor:pointer}
+  nav{position:absolute;left:0;top:85px;width:92px;bottom:40px;border-right:1px solid var(--line);display:flex;flex-direction:column;align-items:center;padding-top:16px;gap:10px}
+  nav a{writing-mode:vertical-rl;letter-spacing:6px;font-size:19px;color:var(--muted);padding:16px 10px;border-radius:8px;cursor:pointer}
+  nav a.on{color:#fff;background:linear-gradient(180deg,#1576c0,#0b3b78)}
+  main{position:absolute;left:104px;top:96px;right:16px;bottom:44px}
+  .page{display:none;height:100%}.page.on{display:grid}
+  #overview{grid-template-columns:repeat(12,1fr);grid-template-rows:140px 1fr 1fr;gap:14px}
+  .card,.box{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:14px 18px;box-sizing:border-box;min-height:0}
+  .card{grid-column:span 3}.card .k{color:var(--muted);font-size:17px}.card .v{font-size:44px;font-weight:700;margin-top:8px;color:var(--main)}
+  .card .v small{font-size:20px;color:var(--muted);margin-left:6px}.card .n{color:var(--muted);font-size:14px;margin-top:4px}
+  .box h3{margin:0 0 6px;font-size:18px;font-weight:600}.box h3 span{color:var(--muted);font-size:14px;font-weight:400;margin-left:8px}
+  .chart{width:100%;height:calc(100% - 30px)}
+  #flow{grid-template-columns:3fr 6fr 3fr;gap:14px}#cluster{grid-template-columns:7fr 5fr;gap:14px}
+  footer{position:absolute;left:104px;right:16px;bottom:8px;color:var(--muted);font-size:13px}
+  table{width:100%;border-collapse:collapse;font-size:16px}td{border-bottom:1px solid var(--line);padding:8px 6px;vertical-align:top}
+</style>
+</head>
+<body>
+<div id="stage">
+  <header>
+    <h1>中国人口版图驾驶舱</h1><span class="sub" id="hint">点地图上的省份联动；点空白处恢复全国</span>
+    年份 <select id="year"></select>
+    指标 <select id="ind"><option value="pop">常住人口（万人）</option><option value="net">净流入（2020，万人）</option><option value="density">人口密度（2020，人/km²）</option></select>
+    <button id="reset">重置</button>
+  </header>
+  <nav><a data-t="overview">总览</a><a data-t="flow">流动</a><a data-t="cluster">分型</a></nav>
+  <main>
+    <section id="overview" class="page">
+      <div class="card"><div class="k" id="k1t">省份数</div><div class="v" id="k1"></div><div class="n" id="k1n"></div></div>
+      <div class="card"><div class="k" id="k2t"></div><div class="v" id="k2"></div><div class="n" id="k2n"></div></div>
+      <div class="card"><div class="k" id="k3t"></div><div class="v" id="k3"></div><div class="n" id="k3n"></div></div>
+      <div class="card"><div class="k" id="k4t"></div><div class="v" id="k4"></div><div class="n" id="k4n"></div></div>
+      <div class="box" style="grid-column:span 3;grid-row:span 2"><h3 id="lineT">全国常住人口<span>1990–2023 · 万人</span></h3><div class="chart" id="line"></div></div>
+      <div class="box" style="grid-column:span 6;grid-row:span 2"><h3 id="mapT"></h3><div class="chart" id="map"></div></div>
+      <div class="box" style="grid-column:span 3;grid-row:span 2"><h3 id="rankT"></h3><div class="chart" id="rank"></div></div>
+    </section>
+    <section id="flow" class="page">
+      <div class="box"><h3 id="fsumT"></h3><div class="chart" id="fsum"></div></div>
+      <div class="box"><h3 id="fmapT"></h3><div class="chart" id="fmap"></div></div>
+      <div class="box"><h3 id="ftopT"></h3><div class="chart" id="ftop"></div></div>
+    </section>
+    <section id="cluster" class="page">
+      <div class="box"><h3>省份分型<span>K-Means k = 4 · 增长率、净流入率、密度</span></h3><div class="chart" id="cmap"></div></div>
+      <div class="box"><h3>每类成员<span>上海独成一类：密度原值没取对数（见 D2-4）</span></h3><div id="ctab" style="overflow:auto;height:calc(100% - 30px)"></div></div>
+    </section>
+  </main>
+  <footer id="foot"></footer>
+</div>
+<script src="../../assets/echarts.min.js"></script>
+<script src="../../assets/china.js"></script>
+<script src="./data.js"></script>
+<script>
+const D = window.POP_DATA, Y = D.meta.years, P = D.meta.provinces;
+echarts.registerMap('china', window.CHINA_GEO);
+const q = new URLSearchParams(location.search);
+const S = {tab: q.get('tab') || 'overview', p: q.get('p') || null, ind: q.get('ind') || 'pop', y: +(q.get('y') || 2023)};
+const C = {}; const mk = id => (C[id] = C[id] || echarts.init(document.getElementById(id)));
+const MAIN = '#36c3ff', ACC = '#ffb547', MUTED = '#8ea3c7', LINE = '#1b3a6b';
+const fmt = (v, d = 0) => v == null ? '—' : (+v).toLocaleString('zh-CN', {maximumFractionDigits: d, minimumFractionDigits: d});
+const shortN = n => n.replace(/(维吾尔自治区|回族自治区|壮族自治区|特别行政区|自治区|省|市)$/, '');
+const val = p => S.ind === 'pop' ? D.panel[p][Y.indexOf(S.y)] : S.ind === 'net' ? D.net[p] : D.density[p];
+const UNIT = {pop: '万人', net: '万人', density: '人/km²'}, NAME = {pop: `${S.y} 年常住人口`, net: '净流入（2020）', density: '人口密度（2020）'};
+const total = () => P.reduce((s, p) => s + (D.panel[p][Y.indexOf(S.y)] || 0), 0);
+const odSum = D.od.reduce((s, o) => s + o[2], 0);
+const axis = {axisLine: {lineStyle: {color: LINE}}, splitLine: {lineStyle: {color: LINE}}, axisLabel: {color: MUTED, fontSize: 13}};
+
+Y.slice().reverse().forEach(y => document.getElementById('year').add(new Option(y, y)));
+document.getElementById('year').value = S.y; document.getElementById('ind').value = S.ind;
+document.getElementById('year').onchange = e => { S.y = +e.target.value; render(); };
+document.getElementById('ind').onchange = e => { S.ind = e.target.value; render(); };
+document.getElementById('reset').onclick = () => { S.p = null; S.ind = 'pop'; S.y = 2023; document.getElementById('year').value = 2023; document.getElementById('ind').value = 'pop'; render(); };
+document.querySelectorAll('nav a').forEach(a => a.onclick = () => { S.tab = a.dataset.t; render(); });
+
+function kpis() {
+  NAME.pop = `${S.y} 年常住人口`;
+  const set = (i, t, v, n) => { document.getElementById('k' + i + 't').textContent = t; document.getElementById('k' + i).innerHTML = v; document.getElementById('k' + i + 'n').textContent = n; };
+  if (!S.p) {
+    set(1, '省份数', `31<small>个</small>`, '31 省（区、市），不含港澳台');
+    set(2, `${S.y} 年常住人口合计`, `${fmt(total())}<small>万人</small>`, '31 省加总（年鉴口径）');
+    set(3, '跨省流动人口（七普）', `${fmt(odSum / 1e8, 2)}<small>亿人</small>`, `${D.od.length} 条省际流向，合计 ${fmt(odSum)} 人`);
+    const top = Object.entries(D.net).sort((a, b) => b[1] - a[1])[0];
+    set(4, '净流入冠军（2020）', `${shortN(top[0])} <small>+${fmt(top[1], 1)} 万</small>`, '净流入 = 迁入 − 迁出');
+  } else {
+    const p = S.p, v = D.panel[p][Y.indexOf(S.y)];
+    set(1, '选中省份', shortN(p), `分型：${D.cluster[p]}`);
+    set(2, `${S.y} 年常住人口`, `${fmt(v)}<small>万人</small>`, v == null ? '该年无单列数据' : `占全国 ${fmt(v / total() * 100, 1)}%`);
+    const r = Object.entries(D.net).sort((a, b) => b[1] - a[1]).findIndex(x => x[0] === p) + 1;
+    set(3, '净流入（2020）', `${D.net[p] > 0 ? '+' : ''}${fmt(D.net[p], 1)}<small>万人</small>`, `全国第 ${r}`);
+    set(4, '人口密度（2020）', `${fmt(D.density[p])}<small>人/km²</small>`, '等积投影面积');
+  }
+}
+
+function overview() {
+  kpis();
+  const data = P.map(p => ({name: p, value: val(p)}));
+  const vs = data.map(d => d.value).filter(v => v != null);
+  const isNet = S.ind === 'net', lim = Math.max(...vs.map(Math.abs));
+  document.getElementById('mapT').innerHTML = `${NAME[S.ind]}<span>${UNIT[S.ind]}${isNet ? ' · 红 = 流入，蓝 = 流出' : ''}</span>`;
+  mk('map').setOption({
+    tooltip: {formatter: d => `${d.name}<br>${fmt(d.value, isNet ? 1 : 0)} ${UNIT[S.ind]}`},
+    visualMap: isNet ? {type: 'continuous', min: -lim, max: lim, inRange: {color: ['#5b9cff', '#1a3566', '#ff5a5a']}, left: 10, bottom: 10, textStyle: {color: MUTED}, calculable: true}
+                     : {type: 'continuous', min: Math.min(...vs), max: S.ind === 'density' ? 1000 : Math.max(...vs), inRange: {color: ['#0d2a5c', '#1e78c8', '#36c3ff', '#ffe08a']}, left: 10, bottom: 10, textStyle: {color: MUTED}, calculable: true},
+    series: [{type: 'map', map: 'china', roam: false, top: 10, bottom: 10, data, selectedMode: 'single',
+              label: {show: false}, emphasis: {label: {show: true, color: '#fff'}, itemStyle: {areaColor: ACC}},
+              select: {itemStyle: {areaColor: ACC, borderColor: '#fff', borderWidth: 2}, label: {show: true, color: '#06112a', fontWeight: 'bold'}},
+              itemStyle: {borderColor: '#5a7fb3', borderWidth: .6, areaColor: '#0d2a5c'}}]}, true);
+  P.forEach(p => mk('map').dispatchAction({type: S.p === p ? 'select' : 'unselect', name: p}));
+  // 排行：前 10 + 后 5（按指标方向：都是从大到小）
+  const sorted = data.filter(d => d.value != null).sort((a, b) => b.value - a.value);
+  const pick = sorted.slice(0, 10).concat(sorted.slice(-5));
+  document.getElementById('rankT').innerHTML = `省份排行<span>前 10 + 后 5 · ${UNIT[S.ind]}</span>`;
+  mk('rank').setOption({grid: {left: 70, right: 70, top: 10, bottom: 20}, xAxis: {type: 'value', ...axis}, yAxis: {type: 'category', inverse: true, data: pick.map(d => shortN(d.name)), ...axis, axisLabel: {color: '#cfe0ff', fontSize: 14}},
+    series: [{type: 'bar', data: pick.map(d => ({value: d.value, itemStyle: {color: d.name === S.p ? ACC : (isNet && d.value < 0 ? '#4c8dff' : MAIN)}})), barWidth: 14,
+              label: {show: true, position: 'right', color: '#cfe0ff', formatter: d => fmt(d.value, isNet ? 1 : 0)}}]}, true);
+  // 折线：选中省或全国合计
+  const ser = S.p ? D.panel[S.p] : Y.map((y, i) => P.reduce((s, p) => s + (D.panel[p][i] || 0), 0));
+  document.getElementById('lineT').innerHTML = `${S.p ? shortN(S.p) : '全国'}常住人口<span>1990–2023 · 万人${S.p && ser.includes(null) ? ' · 缺失年份不画' : ''}</span>`;
+  mk('line').setOption({grid: {left: 64, right: 20, top: 20, bottom: 30}, tooltip: {trigger: 'axis'}, xAxis: {type: 'category', data: Y, ...axis},
+    yAxis: {type: 'value', scale: true, ...axis}, series: [{type: 'line', data: ser, smooth: true, symbol: 'none', connectNulls: false, lineStyle: {color: S.p ? ACC : MAIN, width: 3},
+      areaStyle: {color: S.p ? 'rgba(255,181,71,.15)' : 'rgba(54,195,255,.15)'}, markPoint: {data: [{xAxis: Y.indexOf(2020), yAxis: ser[Y.indexOf(2020)], value: '七普'}], symbolSize: 42, label: {fontSize: 11}}}]}, true);
+}
+
+function flow() {
+  const p = S.p || '广东省';
+  const inn = D.od.filter(o => o[1] === p).sort((a, b) => b[2] - a[2]).slice(0, 10), out = D.od.filter(o => o[0] === p).sort((a, b) => b[2] - a[2]).slice(0, 10);
+  document.getElementById('fmapT').innerHTML = `${shortN(p)}：迁入 / 迁出前 10<span>七普 · 户籍地 → 现住地 · 线宽 = 人数</span>`;
+  const mx = Math.max(...inn.concat(out).map(o => o[2]));
+  const line = (arr, col) => ({type: 'lines', coordinateSystem: 'geo', zlevel: 2, effect: {show: true, period: 5, trailLength: .2, symbolSize: 4},
+    lineStyle: {color: col, opacity: .85, curveness: .25}, data: arr.map(o => ({coords: [D.center[o[0]], D.center[o[1]]], value: o[2], lineStyle: {width: 1 + 7 * o[2] / mx}}))});
+  mk('fmap').setOption({geo: {map: 'china', roam: false, top: 10, bottom: 10, itemStyle: {areaColor: '#0d2a5c', borderColor: '#5a7fb3'}, emphasis: {disabled: true},
+      regions: [{name: p, itemStyle: {areaColor: '#7a4c10'}}]},
+    series: [line(inn, '#ff6b6b'), line(out, '#4c8dff'),
+      {type: 'effectScatter', coordinateSystem: 'geo', data: [{name: shortN(p), value: D.center[p]}], symbolSize: 14, itemStyle: {color: ACC}, label: {show: true, formatter: '{b}', position: 'right', color: '#fff', fontSize: 16}}]}, true);
+  document.getElementById('ftopT').innerHTML = `迁入 TOP10 来源地<span>万人</span>`;
+  mk('ftop').setOption({grid: {left: 80, right: 60, top: 10, bottom: 20}, xAxis: {type: 'value', ...axis}, yAxis: {type: 'category', inverse: true, data: inn.map(o => shortN(o[0])), ...axis, axisLabel: {color: '#cfe0ff', fontSize: 14}},
+    series: [{type: 'bar', data: inn.map(o => +(o[2] / 1e4).toFixed(1)), itemStyle: {color: '#ff6b6b'}, barWidth: 16, label: {show: true, position: 'right', color: '#cfe0ff'}}]}, true);
+  const ti = D.od.filter(o => o[1] === p).reduce((s, o) => s + o[2], 0) / 1e4, to = D.od.filter(o => o[0] === p).reduce((s, o) => s + o[2], 0) / 1e4;
+  document.getElementById('fsumT').innerHTML = `${shortN(p)}：迁入 vs 迁出<span>万人</span>`;
+  mk('fsum').setOption({grid: {left: 50, right: 20, top: 30, bottom: 30}, xAxis: {type: 'category', data: ['迁入', '迁出', '净流入'], ...axis, axisLabel: {color: '#cfe0ff', fontSize: 15}},
+    yAxis: {type: 'value', ...axis}, series: [{type: 'bar', barWidth: 46, data: [{value: +ti.toFixed(1), itemStyle: {color: '#ff6b6b'}}, {value: +to.toFixed(1), itemStyle: {color: '#4c8dff'}},
+      {value: +(ti - to).toFixed(1), itemStyle: {color: ACC}}], label: {show: true, position: 'top', color: '#fff', fontSize: 15}}]}, true);
+}
+
+function cluster() {
+  const names = [...new Set(Object.values(D.cluster))].sort(), cols = ['#36c3ff', '#ffb547', '#ff6b6b', '#57d98f'];
+  mk('cmap').setOption({tooltip: {formatter: d => `${d.name}：${D.cluster[d.name] || '—'}`},
+    visualMap: {type: 'piecewise', pieces: names.map((n, i) => ({value: i, label: n, color: cols[i]})), left: 10, bottom: 10, textStyle: {color: '#cfe0ff', fontSize: 15}},
+    series: [{type: 'map', map: 'china', roam: false, top: 10, bottom: 10, data: P.map(p => ({name: p, value: names.indexOf(D.cluster[p])})), itemStyle: {borderColor: '#5a7fb3', areaColor: '#0d2a5c'}}]}, true);
+  document.getElementById('ctab').innerHTML = '<table>' + names.map((n, i) => {
+    const m = P.filter(p => D.cluster[p] === n);
+    return `<tr><td style="width:170px;color:${cols[i]};font-weight:600">${n}<br><span style="color:#8ea3c7;font-weight:400">${m.length} 省</span></td><td>${m.map(shortN).join('、')}</td></tr>`;
+  }).join('') + '</table>';
+}
+
+function render() {
+  document.querySelectorAll('nav a').forEach(a => a.classList.toggle('on', a.dataset.t === S.tab));
+  document.querySelectorAll('.page').forEach(s => s.classList.toggle('on', s.id === S.tab));
+  ({overview, flow, cluster})[S.tab]();
+  Object.values(C).forEach(c => c.resize());
+  document.getElementById('foot').textContent = '数据：中国人口和就业统计年鉴 2024（年末常住人口）· 第七次人口普查（省际流动）　｜　人口缺失写 null 不补 0；净流入 = 迁入 − 迁出；密度用等积投影面积';
+}
+// 联动：点省 → 全部图跟着变；点空白 → 恢复全国（ECharts 的 zr 点击能分清点到省还是空白）
+mk('map').on('click', e => { S.p = e.name; render(); });
+mk('map').getZr().on('click', e => { if (!e.target) { S.p = null; render(); } });
+mk('rank').on('click', e => { const p = P.find(x => shortN(x) === e.name); if (p) { S.p = p; render(); } });
+function fit() { const s = Math.min(innerWidth / 1920, innerHeight / 1080); document.getElementById('stage').style.transform = `scale(${s})`; }
+addEventListener('resize', () => { fit(); Object.values(C).forEach(c => c.resize()); });
+fit(); render();
+</script>
+</body>
+</html>

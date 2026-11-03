@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>中国人口版图驾驶舱</title>
+<!-- D4-1 存档点 · 骨架版（实操 2 做完的样子）：版式定死，4 个指标卡填真实数字，图表位置只放空框。
+     下一步从实操 3 第 1 条接着发：地图着色 → 排行 → 折线 → 联动 → 流动页下钻 → 统一配色。
+     本地起服务：在项目根目录 python3 -m http.server 8000，打开 http://localhost:8000/apps/pop-cockpit/ -->
+<style>
+  :root{--bg:#06112a;--panel:#0b1d3f;--line:#1b3a6b;--ink:#e6efff;--muted:#8ea3c7;--main:#36c3ff}
+  html,body{margin:0;height:100%;background:var(--bg);overflow:hidden;font-family:"PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;color:var(--ink)}
+  #stage{width:1920px;height:1080px;transform-origin:0 0;position:absolute;left:0;top:0}
+  header{height:84px;display:flex;align-items:center;padding:0 28px;border-bottom:1px solid var(--line);gap:18px}
+  header h1{font-size:34px;margin:0;letter-spacing:2px}
+  header .sub{color:var(--muted);font-size:15px;margin-right:auto}
+  header select,header button{background:var(--panel);color:var(--ink);border:1px solid var(--line);border-radius:6px;font-size:17px;padding:6px 12px}
+  header button{cursor:pointer}
+  nav{position:absolute;left:0;top:85px;width:92px;bottom:40px;border-right:1px solid var(--line);display:flex;flex-direction:column;align-items:center;padding-top:16px;gap:10px}
+  nav a{writing-mode:vertical-rl;letter-spacing:6px;font-size:19px;color:var(--muted);padding:16px 10px;border-radius:8px;cursor:pointer}
+  nav a.on{color:#fff;background:linear-gradient(180deg,#1576c0,#0b3b78)}
+  main{position:absolute;left:104px;top:96px;right:16px;bottom:44px}
+  .page{display:none;height:100%}.page.on{display:grid}
+  #overview{grid-template-columns:repeat(12,1fr);grid-template-rows:140px 1fr 1fr;gap:14px}
+  .card,.box{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:14px 18px;box-sizing:border-box;min-height:0}
+  .card{grid-column:span 3}.card .k{color:var(--muted);font-size:17px}.card .v{font-size:44px;font-weight:700;margin-top:8px;color:var(--main)}
+  .card .v small{font-size:20px;color:var(--muted);margin-left:6px}.card .n{color:var(--muted);font-size:14px;margin-top:4px}
+  .box h3{margin:0 0 6px;font-size:18px;font-weight:600}.box h3 span{color:var(--muted);font-size:14px;font-weight:400;margin-left:8px}
+  .chart{width:100%;height:calc(100% - 30px);border:1px dashed var(--line);border-radius:8px;box-sizing:border-box;display:flex;align-items:center;justify-content:center;color:var(--muted)}
+  #flow{grid-template-columns:3fr 6fr 3fr;gap:14px}#cluster{grid-template-columns:7fr 5fr;gap:14px}
+  footer{position:absolute;left:104px;right:16px;bottom:8px;color:var(--muted);font-size:13px}
+</style>
+</head>
+<body>
+<div id="stage">
+  <header>
+    <h1>中国人口版图驾驶舱</h1><span class="sub">骨架版：图表位置留空，下一步一次加一个</span>
+    年份 <select id="year"></select>
+    指标 <select id="ind"><option value="pop">常住人口（万人）</option><option value="net">净流入（2020，万人）</option><option value="density">人口密度（2020，人/km²）</option></select>
+    <button id="reset">重置</button>
+  </header>
+  <nav><a data-t="overview">总览</a><a data-t="flow">流动</a><a data-t="cluster">分型</a></nav>
+  <main>
+    <section id="overview" class="page">
+      <div class="card"><div class="k" id="k1t"></div><div class="v" id="k1"></div><div class="n" id="k1n"></div></div>
+      <div class="card"><div class="k" id="k2t"></div><div class="v" id="k2"></div><div class="n" id="k2n"></div></div>
+      <div class="card"><div class="k" id="k3t"></div><div class="v" id="k3"></div><div class="n" id="k3n"></div></div>
+      <div class="card"><div class="k" id="k4t"></div><div class="v" id="k4"></div><div class="n" id="k4n"></div></div>
+      <div class="box" style="grid-column:span 3;grid-row:span 2"><h3>全国常住人口<span>1990–2023 · 万人</span></h3><div class="chart" id="line">折线（第 3 条）</div></div>
+      <div class="box" style="grid-column:span 6;grid-row:span 2"><h3>中国地图<span>按当前指标着色</span></h3><div class="chart" id="map">地图（第 1 条）</div></div>
+      <div class="box" style="grid-column:span 3;grid-row:span 2"><h3>省份排行<span>前 10 + 后 5</span></h3><div class="chart" id="rank">排行（第 2 条）</div></div>
+    </section>
+    <section id="flow" class="page">
+      <div class="box"><h3>迁入 vs 迁出</h3><div class="chart" id="fsum">（第 5 条）</div></div>
+      <div class="box"><h3>迁入 / 迁出飞线</h3><div class="chart" id="fmap">点一个省 → 前 10 条飞线（第 5 条）</div></div>
+      <div class="box"><h3>迁入 TOP10 来源地</h3><div class="chart" id="ftop">（第 5 条）</div></div>
+    </section>
+    <section id="cluster" class="page">
+      <div class="box"><h3>省份分型</h3><div class="chart" id="cmap">分型地图</div></div>
+      <div class="box"><h3>每类成员</h3><div class="chart" id="ctab">成员列表</div></div>
+    </section>
+  </main>
+  <footer>数据：中国人口和就业统计年鉴 2024（年末常住人口）· 第七次人口普查（省际流动）</footer>
+</div>
+<script src="../../assets/echarts.min.js"></script>
+<script src="../../assets/china.js"></script>
+<script src="./data.js"></script>
+<script>
+const D = window.POP_DATA, Y = D.meta.years, P = D.meta.provinces;
+const S = {tab: 'overview', ind: 'pop', y: 2023};
+const $ = id => document.getElementById(id);
+const fmt = (v, d = 0) => v == null ? '—' : (+v).toLocaleString('zh-CN', {maximumFractionDigits: d, minimumFractionDigits: d});
+const shortN = n => n.replace(/(维吾尔自治区|回族自治区|壮族自治区|特别行政区|自治区|省|市)$/, '');
+Y.slice().reverse().forEach(y => $('year').add(new Option(y, y)));
+$('year').onchange = e => { S.y = +e.target.value; render(); };
+$('ind').onchange = e => { S.ind = e.target.value; render(); };
+$('reset').onclick = () => { Object.assign(S, {tab: 'overview', ind: 'pop', y: 2023}); render(); };
+document.querySelectorAll('nav a').forEach(a => a.onclick = () => { S.tab = a.dataset.t; render(); });
+
+function render() {
+  $('year').value = S.y; $('ind').value = S.ind;
+  document.querySelectorAll('nav a').forEach(a => a.classList.toggle('on', a.dataset.t === S.tab));
+  document.querySelectorAll('.page').forEach(s => s.classList.toggle('on', s.id === S.tab));
+  const set = (i, t, v, n) => { $('k' + i + 't').textContent = t; $('k' + i).innerHTML = v; $('k' + i + 'n').textContent = n; };
+  const total = P.reduce((s, p) => s + (D.panel[p][Y.indexOf(S.y)] || 0), 0), odSum = D.od.reduce((s, o) => s + o[2], 0);
+  const top = Object.entries(D.net).sort((a, b) => b[1] - a[1])[0];
+  set(1, '省份数', `${P.length}<small>个</small>`, '31 省（区、市），不含港澳台');
+  set(2, `${S.y} 年常住人口合计`, `${fmt(total)}<small>万人</small>`, '31 省加总（年鉴口径）');
+  set(3, '跨省流动人口（七普）', `${fmt(odSum / 1e8, 2)}<small>亿人</small>`, `${D.od.length} 条省际流向，合计 ${fmt(odSum)} 人`);
+  set(4, '净流入冠军（2020）', `${shortN(top[0])} <small>+${fmt(top[1], 1)} 万</small>`, '净流入 = 迁入 − 迁出');
+}
+function fit() { const s = Math.min(innerWidth / 1920, innerHeight / 1080); $('stage').style.transform = `scale(${s})`; }
+addEventListener('resize', fit);
+fit(); render();
+</script>
+</body>
+</html>

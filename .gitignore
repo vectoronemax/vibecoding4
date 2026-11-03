@@ -1,0 +1,10 @@
+# 单独部署的大屏，有自己的 Git 仓库
+dist/
+
+# 本机配置，含绝对路径
+.claude/
+
+# 系统和 Python 生成的文件
+.DS_Store
+__pycache__/
+*.pyc

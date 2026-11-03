@@ -1,0 +1,560 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>北京 16 区 POI 版图</title>
+<style>
+  :root {
+    /* 全站只用一个主色 + 一个强调色：蓝 = 底色 / 流出 / 减少，红 = 流入 / 增加 / 强调 */
+    --main: #3a93ee;
+    --accent: #ef5f4c;
+    --bg: #030915;
+    --stage: #050d1f;
+    --panel-line: rgba(90, 160, 240, .22);
+    --main-dim: rgba(58, 147, 238, .14);
+    --text: #e3eeff;
+    --text-2: #9fb3d1;
+    --text-3: #7a91b5;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; height: 100%; overflow: hidden;
+    background: var(--bg); color: var(--text);
+    font-family: "PingFang SC", "Microsoft YaHei", "Noto Sans SC", system-ui, sans-serif;
+  }
+
+  /* —— 1920×1080 设计稿，JS 按窗口等比缩放 —— */
+  #stage {
+    position: absolute; left: 50%; top: 50%;
+    width: 1920px; height: 1080px;
+    transform-origin: 50% 50%;
+    display: grid;
+    grid-template-columns: 104px minmax(0, 1fr);
+    grid-template-rows: 88px minmax(0, 1fr) 34px;
+    background-color: var(--stage);
+    background-image:
+      radial-gradient(1200px 560px at 50% -12%, rgba(40, 110, 220, .26), transparent 70%),
+      linear-gradient(rgba(80, 150, 255, .045) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(80, 150, 255, .045) 1px, transparent 1px);
+    background-size: auto, 40px 40px, 40px 40px;
+  }
+
+  /* —— 顶部 —— */
+  .topbar {
+    grid-column: 1 / -1;
+    position: relative;
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 0 32px;
+    border-bottom: 1px solid var(--panel-line);
+    background: linear-gradient(180deg, rgba(10, 34, 72, .7), rgba(6, 18, 40, .3));
+  }
+  .topbar::after {
+    content: ""; position: absolute; left: 30%; right: 30%; bottom: -1px; height: 2px;
+    background: linear-gradient(90deg, transparent, var(--main), transparent);
+  }
+  .brand { display: flex; align-items: baseline; gap: 20px; }
+  .brand h1 {
+    margin: 0; font-size: 34px; font-weight: 600; letter-spacing: 6px;
+    text-shadow: 0 0 18px rgba(58, 147, 238, .55);
+  }
+  .brand span { font-size: 15px; color: var(--text-2); letter-spacing: 1px; }
+
+  .controls { display: flex; align-items: center; gap: 24px; }
+  .controls label { display: flex; align-items: center; gap: 10px; font-size: 16px; color: var(--text-2); }
+  .controls select, .controls button {
+    height: 40px; font: inherit; font-size: 17px; border-radius: 4px; cursor: pointer;
+  }
+  .controls select {
+    appearance: none; -webkit-appearance: none;
+    min-width: 128px; padding: 0 38px 0 14px;
+    color: var(--text); background-color: rgba(6, 24, 52, .9);
+    border: 1px solid rgba(58, 147, 238, .55);
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8'%3E%3Cpath d='M1 1l5 5 5-5' fill='none' stroke='%233a93ee' stroke-width='2'/%3E%3C/svg%3E");
+    background-repeat: no-repeat; background-position: right 14px center;
+  }
+  .controls select:focus-visible, .controls button:focus-visible, .nav-item:focus-visible {
+    outline: 2px solid var(--main); outline-offset: 2px;
+  }
+  .controls select option { background: #071a38; }
+  .controls button {
+    padding: 0 22px; color: var(--text);
+    background: var(--main-dim); border: 1px solid var(--main);
+  }
+  .controls button:hover { background: rgba(58, 147, 238, .28); }
+  .controls #sel-chip { color: #fff; border-color: var(--accent); background: rgba(239, 95, 76, .16); padding: 0 16px; }
+  .controls #sel-chip:hover { background: rgba(239, 95, 76, .3); }
+  .controls #sel-chip b { font-weight: 600; }
+  .controls #sel-chip[hidden] { display: none; }
+
+  /* —— 左侧竖排菜单 —— */
+  .sidenav {
+    display: flex; flex-direction: column; gap: 10px;
+    padding: 20px 12px;
+    border-right: 1px solid var(--panel-line);
+    background: rgba(6, 18, 40, .35);
+  }
+  .nav-item {
+    height: 84px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px;
+    font: inherit; font-size: 16px; letter-spacing: 2px; color: var(--text-2);
+    background: transparent; border: 1px solid transparent; border-radius: 6px; cursor: pointer;
+  }
+  .nav-item svg { width: 26px; height: 26px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+  .nav-item:hover { color: var(--text); background: rgba(58, 147, 238, .08); }
+  .nav-item.active {
+    color: #fff; background: var(--main-dim);
+    border-color: rgba(58, 147, 238, .5); box-shadow: inset 3px 0 0 var(--main);
+  }
+
+  /* —— 页面：12 列栅格 —— */
+  main { min-width: 0; min-height: 0; padding: 18px 24px 14px; }
+  .page {
+    display: none; height: 100%;
+    grid-template-columns: repeat(12, minmax(0, 1fr));
+    gap: 16px;
+  }
+  .page.active { display: grid; }
+  #page-overview { grid-template-rows: 148px repeat(3, minmax(0, 1fr)); }
+  #page-flow, #page-type { grid-template-rows: repeat(3, minmax(0, 1fr)); }
+
+  /* —— 面板 —— */
+  .panel {
+    position: relative; min-width: 0; min-height: 0;
+    display: flex; flex-direction: column;
+    padding: 14px 16px 12px;
+    background: linear-gradient(180deg, rgba(14, 42, 86, .55), rgba(8, 24, 52, .55));
+    border: 1px solid var(--panel-line);
+  }
+  .panel::before, .panel::after {
+    content: ""; position: absolute; width: 14px; height: 14px;
+    border: 2px solid var(--main); pointer-events: none;
+  }
+  .panel::before { left: -1px; top: -1px; border-right: 0; border-bottom: 0; }
+  .panel::after { right: -1px; bottom: -1px; border-left: 0; border-top: 0; }
+  .panel-hd { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin-bottom: 8px; }
+  .panel-hd h3 {
+    margin: 0; padding-left: 12px; border-left: 3px solid var(--main);
+    font-size: 19px; font-weight: 600; line-height: 1.1; white-space: nowrap;
+  }
+  .panel-note { font-size: 14px; color: var(--text-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+  /* 图表容器：空的时候显示虚线占位，ECharts 渲染后自动消失 */
+  .chart { flex: 1; min-height: 0; position: relative; }
+  .chart:empty { border: 1px dashed rgba(90, 160, 240, .2); border-radius: 4px; }
+  .chart:empty::after {
+    content: "#" attr(id);
+    position: absolute; inset: 0; display: grid; place-items: center;
+    font: 14px ui-monospace, Menlo, monospace; color: var(--text-3);
+  }
+
+  /* —— 指标卡 —— */
+  .kpi { justify-content: space-between; padding: 16px 22px 14px; }
+  .kpi-hd { display: flex; align-items: center; justify-content: space-between; gap: 12px; font-size: 17px; color: var(--text-2); }
+  .kpi-tag { font-size: 13px; padding: 2px 8px; border-radius: 3px; white-space: nowrap; color: var(--text-2); border: 1px solid rgba(159, 179, 209, .32); }
+  .kpi-tag.live { color: #bcdcff; border-color: rgba(58, 147, 238, .6); }
+  .kpi-val { display: flex; align-items: baseline; gap: 10px; }
+  .kpi-val b { font-size: 46px; font-weight: 600; line-height: 1; color: #fff; }
+  .kpi-val i { font-style: normal; font-size: 17px; color: var(--text-2); }
+  .kpi-val .arrow { font-size: 20px; }
+  .kpi-foot { font-size: 14px; color: var(--text-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .up { color: var(--accent); }
+  .down { color: var(--main); }
+
+  /* —— 流动概况 —— */
+  .mini-grid { flex: 1; min-height: 0; display: grid; grid-template: 1fr 1fr / 1fr 1fr; gap: 10px; }
+  .mini { display: flex; flex-direction: column; justify-content: center; gap: 6px; padding: 0 16px; background: rgba(58, 147, 238, .08); border-radius: 4px; }
+  .mini span { font-size: 14px; color: var(--text-2); }
+  .mini b { font-size: 28px; font-weight: 600; line-height: 1.1; color: #fff; white-space: nowrap; }
+  .mini small { margin-left: 6px; font-size: 14px; font-weight: 400; color: var(--text-2); }
+
+  /* —— 页脚 —— */
+  .footbar {
+    grid-column: 1 / -1;
+    display: flex; align-items: center; padding: 0 32px;
+    font-size: 14px; color: var(--text-3);
+    border-top: 1px solid var(--panel-line);
+    white-space: nowrap; overflow: hidden;
+  }
+
+  .fatal { height: 100%; display: grid; place-items: center; text-align: center; font-size: 22px; line-height: 1.8; color: var(--accent); }
+  .fatal code { color: var(--text); }
+</style>
+</head>
+<body>
+<div id="stage">
+
+  <header class="topbar">
+    <div class="brand">
+      <h1>北京 16 区 POI 版图</h1>
+      <span>13 大类 · POI 2026-10 采集 · 常住人口 2020 七普</span>
+    </div>
+    <div class="controls">
+      <button id="sel-chip" type="button" title="清除选中，恢复全市" hidden>已选 <b id="sel-name"></b> ✕</button>
+      <label>指标
+        <select id="sel-metric">
+          <option value="density">POI 密度</option>
+          <option value="perCap">每万人 POI</option>
+        </select>
+      </label>
+      <button id="btn-reset" type="button">重置</button>
+    </div>
+  </header>
+
+  <nav class="sidenav">
+    <button class="nav-item active" type="button" data-page="overview">
+      <svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+      总览
+    </button>
+  </nav>
+
+  <main id="main">
+
+    <!-- 总览：第 1 行 4 张指标卡各 3 列；第 2–4 行 左 3 列 | 地图 6 列 | 右 3 列 -->
+    <section class="page active" id="page-overview">
+      <div class="panel kpi" style="grid-column: span 3;">
+        <div class="kpi-hd"><span id="kpi-1-label"></span><span class="kpi-tag live" id="kpi-1-tag"></span></div>
+        <div class="kpi-val"><b id="kpi-1-val">—</b><i id="kpi-1-unit"></i></div>
+        <div class="kpi-foot" id="kpi-1-foot"></div>
+      </div>
+      <div class="panel kpi" style="grid-column: span 3;">
+        <div class="kpi-hd"><span id="kpi-2-label"></span><span class="kpi-tag live" id="kpi-2-tag"></span></div>
+        <div class="kpi-val"><b id="kpi-2-val">—</b><i id="kpi-2-unit"></i><span class="arrow" id="kpi-2-arrow"></span></div>
+        <div class="kpi-foot" id="kpi-2-foot"></div>
+      </div>
+      <div class="panel kpi" style="grid-column: span 3;">
+        <div class="kpi-hd"><span id="kpi-3-label"></span><span class="kpi-tag" id="kpi-3-tag"></span></div>
+        <div class="kpi-val"><b id="kpi-3-val">—</b><i id="kpi-3-unit"></i></div>
+        <div class="kpi-foot" id="kpi-3-foot"></div>
+      </div>
+      <div class="panel kpi" style="grid-column: span 3;">
+        <div class="kpi-hd"><span id="kpi-4-label"></span><span class="kpi-tag" id="kpi-4-tag"></span></div>
+        <div class="kpi-val"><b id="kpi-4-val">—</b><i id="kpi-4-unit"></i></div>
+        <div class="kpi-foot" id="kpi-4-foot"></div>
+      </div>
+
+      <div class="panel" style="grid-column: 1 / span 3; grid-row: 2 / span 3;">
+        <div class="panel-hd"><h3 id="comp-title"></h3><span class="panel-note" id="comp-note"></span></div>
+        <div class="chart" id="chart-comp"></div>
+      </div>
+
+      <div class="panel" style="grid-column: 4 / span 6; grid-row: 2 / span 3;">
+        <div class="panel-hd"><h3 id="map-title"></h3><span class="panel-note" id="map-note"></span></div>
+        <div class="chart" id="chart-map"></div>
+      </div>
+
+      <div class="panel" style="grid-column: 10 / span 3; grid-row: 2 / span 3;">
+        <div class="panel-hd"><h3 id="rank-title"></h3><span class="panel-note" id="rank-note"></span></div>
+        <div class="chart" id="chart-rank"></div>
+      </div>
+    </section>
+
+  </main>
+
+  <footer class="footbar">
+    数据来源：高德开放平台 Web 服务 API（2026 年 10 月采集，按名称 + 坐标去重，13 大类；API 返回不等于全部实体，宜跨区比较）｜北京市第七次全国人口普查公报第二号（2020-11-01）｜区界：高德行政区 API（GCJ-02）｜面积：EPSG:32650 投影计算
+  </footer>
+</div>
+
+<script src="./data.js"></script>
+<script src="./bj_geo.js"></script>
+<script src="../../assets/echarts.min.js"></script>
+<script>
+(function () {
+  const $ = (id) => document.getElementById(id);
+  const stage = $('stage');
+
+  // 设计稿 1920×1080，按窗口短边等比缩放并居中
+  function fit() {
+    const s = Math.min(innerWidth / 1920, innerHeight / 1080);
+    stage.style.transform = `translate(-50%, -50%) scale(${s})`;
+  }
+  addEventListener('resize', fit);
+  fit();
+
+  const D = window.BJ_DATA;
+  if (!D || !window.echarts || !window.BJ_GEO) {
+    const miss = !D ? './data.js（先运行 python3 apps/bj-cockpit/build_data.py）' : !window.echarts ? '../../assets/echarts.min.js' : './bj_geo.js（先运行 python3 apps/bj-cockpit/build_data.py）';
+    $('main').innerHTML = `<div class="fatal">没有读到 <code>${miss}</code></div>`;
+    return;
+  }
+
+  const { districts, categories } = D.meta;
+  const DEFAULTS = { metric: 'density', page: 'overview', district: null };
+  const state = { ...DEFAULTS };
+
+  // —— 配色：主色、强调色在 CSS :root；色阶都是这两个颜色的明暗阶 ——
+  const css = (name) => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+  const C = {
+    main: css('--main'),
+    text2: css('--text-2'), text3: css('--text-3'),
+    noData: '#16233c',
+    border: 'rgba(5, 13, 31, .7)',   // 区小、相邻区常同色（东城西城都是最亮一档），用深色描边才分得开
+    seq: ['#1f4f8f', '#2b70c2', '#3a93ee', '#62adf8', '#8fc6ff', '#c4e1ff'],  // 由暗到亮 = 由少到多
+  };
+
+  const fmt = (n, d = 0) => n.toLocaleString('zh-CN', { minimumFractionDigits: d, maximumFractionDigits: d });
+  const short = (d) => d.replace(/区$/, '');
+
+  const METRICS = {
+    density: { name: 'POI 密度',   title: '各区 POI 密度',   rank: 'POI 密度排行',   unit: '个/km²',  note: 'POI 2026-10 ÷ 面积',      value: (d) => D.density[d], text: (v) => fmt(v, 1) },
+    perCap:  { name: '每万人 POI', title: '各区每万人 POI', rank: '每万人 POI 排行', unit: '个/万人', note: 'POI 2026-10 ÷ 人口 2020', value: (d) => D.perCap[d],  text: (v) => fmt(v, 1) },
+  };
+  Object.values(METRICS).forEach((m) => { m.ranked = districts.slice().sort((a, b) => m.value(b) - m.value(a)); });
+
+  // —— 静态汇总 ——
+  const sum = (o) => districts.reduce((s, d) => s + o[d], 0);
+  const poiTotal = sum(D.poi), popTotal = sum(D.pop), areaTotal = sum(D.area);
+  const cityMix = categories.map((_, i) => districts.reduce((s, d) => s + D.mix[d][i], 0));
+
+  echarts.registerMap('beijing', BJ_GEO);
+
+  // —— ECharts 公共部分 ——
+  const BASE = {
+    animationDuration: 400,
+    animationDurationUpdate: 300,
+    textStyle: { fontFamily: getComputedStyle(document.body).fontFamily, color: C.text2 },
+    tooltip: {
+      backgroundColor: 'rgba(5, 16, 38, .95)', borderColor: 'rgba(58, 147, 238, .55)', borderWidth: 1,
+      textStyle: { color: C.text2, fontSize: 14 }, confine: true,
+      extraCssText: 'max-width:360px;white-space:normal;line-height:1.6;box-shadow:none;',
+    },
+  };
+  const tipValue = (v, unit) => `<span style="font-size:17px;font-weight:600;color:#fff">${v}</span> ${unit}`;
+
+  const charts = {};
+  const barRows = {};   // 每张条形图当前的行，点击时反查区
+  const ON_INIT = { 'chart-map': bindMapClicks, 'chart-rank': bindBarClicks };
+  function getChart(id) {
+    if (!charts[id]) {
+      charts[id] = echarts.init($(id), null, { devicePixelRatio: Math.max(2, window.devicePixelRatio || 1) });
+      if (ON_INIT[id]) ON_INIT[id](charts[id], id);
+    }
+    return charts[id];
+  }
+  const draw = (id, option) => getChart(id).setOption(option, { notMerge: true });
+
+  // —— 联动入口：选中 / 取消区 ——
+  function setDistrict(d) {
+    state.district = d;
+    render();
+  }
+  function bindMapClicks(chart) {
+    chart.on('click', (e) => { if (districts.includes(e.name)) setDistrict(e.name); });
+    chart.getZr().on('click', (e) => { if (!e.target) setDistrict(null); });   // 点空白处恢复
+  }
+  function bindBarClicks(chart, id) {
+    chart.on('click', (e) => {
+      const row = barRows[id] && barRows[id][e.dataIndex];
+      if (row && row.full) setDistrict(row.full);
+    });
+  }
+
+  // —— 通用横向条形图 ——
+  // rows: { label, value, color, text, tip, full?, dim?, strong?, rank?, gap? }
+  function barOption(id, rows, axisWidth, labelRoom = 66) {
+    barRows[id] = rows;
+    const vals = rows.map((r) => r.value).filter((v) => v != null);
+    const min = Math.min(0, ...vals), max = Math.max(0, ...vals);
+    // labelRoom：数值标签的固定留白，防止贴边被裁
+    const left = axisWidth + (min < 0 ? labelRoom : 0);
+    return {
+      ...BASE,
+      tooltip: { ...BASE.tooltip, trigger: 'item', formatter: (e) => rows[e.dataIndex].tip },
+      grid: { left, right: labelRoom, top: 2, bottom: 2 },
+      xAxis: { type: 'value', show: false, min, max },
+      yAxis: {
+        type: 'category', inverse: true, data: rows.map((_, i) => i),
+        axisLine: { show: false, onZero: false }, axisTick: { show: false },
+        axisLabel: {
+          interval: 0, align: 'left', margin: left - 2,
+          formatter: (_, i) => {
+            const r = rows[i];
+            if (r.gap) return '{g|⋯}';
+            const name = `{${r.strong ? 'ns' : 'n'}|${r.label}}`;
+            return r.rank ? `{r|${r.rank}}${name}` : name;
+          },
+          rich: {
+            r: { width: 26, align: 'right', color: C.text3, fontSize: 13, padding: [0, 8, 0, 0] },
+            n: { color: C.text2, fontSize: 14 },
+            ns: { color: '#fff', fontSize: 14, fontWeight: 600 },
+            g: { color: C.text3, fontSize: 14, width: 26, align: 'right', padding: [0, 8, 0, 0] },
+          },
+        },
+      },
+      series: [{
+        type: 'bar', barCategoryGap: '34%', barMaxWidth: 14, cursor: rows.some((r) => r.full) ? 'pointer' : 'default',
+        data: rows.map((r) => (r.gap ? null : {
+          value: r.value,
+          itemStyle: {
+            color: r.color, opacity: r.dim ? 0.3 : 1,
+            borderRadius: r.value < 0 ? [4, 0, 0, 4] : [0, 4, 4, 0],
+          },
+          label: {
+            show: true, position: r.value < 0 ? 'left' : 'right', formatter: r.text, fontSize: 13,
+            color: r.strong ? '#fff' : C.text2, fontWeight: r.strong ? 600 : 400,
+          },
+        })),
+        emphasis: { itemStyle: { borderColor: '#fff', borderWidth: 1 } },
+      }],
+    };
+  }
+
+  // —— 第 1 条：地图按当前指标着色 ——
+  function visualMapFor(metric) {
+    const s = C.seq;
+    const base = {
+      seriesIndex: 0, left: 8, bottom: 8, orient: 'vertical',
+      textStyle: { color: C.text2, fontSize: 13 },
+      type: 'piecewise', selectedMode: false, showLabel: true, itemWidth: 16, itemHeight: 12, itemGap: 6, itemSymbol: 'rect', textGap: 8,
+    };
+    if (metric === 'density') {
+      return { ...base, text: ['个/km²', ''],
+        pieces: [
+          { lt: 15, color: s[0], label: '< 15' },
+          { gte: 15, lt: 50, color: s[1], label: '15–50' },
+          { gte: 50, lt: 100, color: s[2], label: '50–100' },
+          { gte: 100, lt: 300, color: s[3], label: '100–300' },
+          { gte: 300, lt: 600, color: s[4], label: '300–600' },
+          { gte: 600, color: s[5], label: '≥ 600' },
+        ] };
+    }
+    return { ...base, text: ['个/万人', ''],
+      pieces: [
+        { lt: 350, color: s[0], label: '< 350' },
+        { gte: 350, lt: 400, color: s[1], label: '350–400' },
+        { gte: 400, lt: 450, color: s[2], label: '400–450' },
+        { gte: 450, lt: 500, color: s[3], label: '450–500' },
+        { gte: 500, lt: 550, color: s[4], label: '500–550' },
+        { gte: 550, color: s[5], label: '≥ 550' },
+      ] };
+  }
+
+  // 东城、西城紧挨着且比标签还窄，默认标签会叠成「西东城」，各往外挪一点
+  const LABEL_OFFSET = { '西城区': [-8, 0], '东城区': [8, 3] };
+
+  // 两个口径排名差很大（怀柔每万人第 3、密度第 13），提示里两个都写
+  function districtTip(d) {
+    const m = METRICS[state.metric];
+    const o = METRICS[state.metric === 'density' ? 'perCap' : 'density'];
+    return `${tipValue(m.text(m.value(d)), m.unit)}<br>${d} · ${m.name}第 ${m.ranked.indexOf(d) + 1} / ${districts.length} 名`
+      + `<br>${o.name} ${o.text(o.value(d))} ${o.unit} · 第 ${o.ranked.indexOf(d) + 1} 名`
+      + `<br>POI ${fmt(D.poi[d])} 个 · ${fmt(D.area[d], 1)} km² · ${fmt(D.pop[d] / 1e4, 1)} 万人`;
+  }
+
+  function renderMap() {
+    const m = METRICS[state.metric];
+    const P = state.district;
+    $('map-title').textContent = m.title;
+    $('map-note').textContent = `${m.note} · ${m.unit} · 点区联动，点空白处恢复`;
+    draw('chart-map', {
+      ...BASE,
+      tooltip: {
+        ...BASE.tooltip, trigger: 'item',
+        formatter: (e) => (districts.includes(e.name) ? districtTip(e.name) : ''),
+      },
+      visualMap: visualMapFor(state.metric),
+      series: [{
+        type: 'map', map: 'beijing', roam: false, selectedMode: false,
+        layoutCenter: ['54%', '50%'], layoutSize: '96%',   // 北京接近正方形，比全国图要小一号，并右移让出左下角图例
+        itemStyle: { areaColor: C.noData, borderColor: C.border, borderWidth: 0.8 },
+        label: { show: true, formatter: (e) => short(e.name), color: '#fff', fontSize: 13, textBorderColor: '#06122a', textBorderWidth: 3 },
+        emphasis: {
+          label: { show: true, formatter: (e) => short(e.name), color: '#fff', fontSize: 14, textBorderColor: '#06122a', textBorderWidth: 3 },
+          itemStyle: { areaColor: null, borderColor: '#fff', borderWidth: 1.5 },
+        },
+        data: districts.map((d) => {
+          const item = { name: d, value: m.value(d), label: { offset: LABEL_OFFSET[d] || [0, 0] } };
+          if (d === P) {
+            item.itemStyle = { borderColor: '#fff', borderWidth: 2.5 };
+            Object.assign(item.label, { show: true, formatter: short(d), color: '#fff', fontSize: 15, fontWeight: 600, textBorderColor: '#06122a', textBorderWidth: 3 });
+          }
+          return item;
+        }),
+      }],
+    });
+  }
+
+  // —— 第 2 条：当前指标 16 区排行 ——
+  function renderRank() {
+    const m = METRICS[state.metric];
+    const P = state.district;
+    const rows = m.ranked.map((d, i) => ({
+      label: short(d), value: m.value(d), full: d, rank: i + 1, color: C.main,
+      text: m.text(m.value(d)), dim: !!P && d !== P, strong: d === P,
+      tip: districtTip(d),
+    }));
+    $('rank-title').textContent = m.rank;
+    $('rank-note').textContent = `${m.note} · ${m.unit}`;
+    draw('chart-rank', barOption('chart-rank', rows, 84));
+  }
+
+  // —— 第 3 条：左侧 13 大类构成，默认全市 ——
+  function renderComp() {
+    const P = state.district;
+    const name = P || '全市';
+    const counts = P ? D.mix[P] : cityMix;
+    const total = P ? D.poi[P] : poiTotal;
+    const rows = categories
+      .map((c, i) => ({ c, n: counts[i], city: cityMix[i] }))
+      .sort((a, b) => b.n - a.n)
+      .map(({ c, n, city }) => ({
+        label: c, value: n, color: C.main,
+        text: `${fmt(n)} · ${fmt(n / total * 100, 1)}%`,
+        tip: `${tipValue(fmt(n), '个')}<br>${c} · 占${name} ${fmt(n / total * 100, 1)}%`
+          + (P ? `<br>全市该类占比 ${fmt(city / poiTotal * 100, 1)}%` : ''),
+      }));
+    $('comp-title').textContent = `${name} 13 大类构成`;
+    $('comp-note').textContent = `合计 ${fmt(total)} 个 · 2026-10`;
+    draw('chart-comp', barOption('chart-comp', rows, 72, 108));
+  }
+
+  // —— 指标卡：全市口径，不随选中变化 ——
+  function setKpi(n, { label, tag, val, unit, foot }) {
+    $(`kpi-${n}-label`).textContent = label;
+    $(`kpi-${n}-tag`).textContent = tag;
+    $(`kpi-${n}-val`).textContent = val;
+    $(`kpi-${n}-unit`).textContent = unit;
+    $(`kpi-${n}-foot`).textContent = foot;
+  }
+  function renderKpis() {
+    const { density: den, perCap: per } = METRICS;
+    const [d1, d2] = den.ranked, dLow = den.ranked[den.ranked.length - 1];
+    const [p1, p2, p3] = per.ranked;
+    setKpi(1, { label: 'POI 总数', tag: '2026-10 采集', val: fmt(poiTotal), unit: '个',
+      foot: `${districts.length} 区合计 · ${categories.length} 大类 · 全市 ${fmt(poiTotal / areaTotal, 1)} 个/km²` });
+    setKpi(2, { label: '常住人口合计', tag: '2020 七普', val: fmt(popTotal), unit: '人',
+      foot: `${districts.length} 区合计 · 全市每万人 POI ${fmt(poiTotal / popTotal * 1e4, 1)} 个` });
+    setKpi(3, { label: 'POI 密度最高的区', tag: den.note, val: d1, unit: `${den.text(den.value(d1))} ${den.unit}`,
+      foot: `第 2 ${d2} ${den.text(den.value(d2))} · 最低 ${dLow} ${den.text(den.value(dLow))}` });
+    setKpi(4, { label: '每万人 POI 最高的区', tag: per.note, val: p1, unit: `${per.text(per.value(p1))} ${per.unit}`,
+      foot: `第 2 ${p2} ${per.text(per.value(p2))} · 第 3 ${p3} ${per.text(per.value(p3))}` });
+  }
+
+  function renderPage() {
+    document.querySelectorAll('.nav-item').forEach((b) => b.classList.toggle('active', b.dataset.page === state.page));
+    document.querySelectorAll('.page').forEach((p) => p.classList.toggle('active', p.id === 'page-' + state.page));
+  }
+
+  // 所有交互都改 state 再调 render
+  function render() {
+    $('sel-metric').value = state.metric;
+    $('sel-chip').hidden = !state.district;
+    $('sel-name').textContent = state.district || '';
+    renderPage();
+    renderKpis();
+    renderMap();
+    renderRank();
+    renderComp();
+  }
+
+  $('sel-metric').addEventListener('change', (e) => { state.metric = e.target.value; render(); });
+  $('btn-reset').addEventListener('click', () => { Object.assign(state, DEFAULTS); render(); });
+  $('sel-chip').addEventListener('click', () => setDistrict(null));
+  document.querySelectorAll('.nav-item').forEach((b) =>
+    b.addEventListener('click', () => { state.page = b.dataset.page; render(); }));
+
+  render();
+})();
+</script>
+</body>
+</html>

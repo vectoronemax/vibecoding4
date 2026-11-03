@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>中国主要城市通勤监测驾驶舱</title>
+<!-- D4-5 存档点 · 骨架版（实操 3 第 (1) 条做完的样子）：版式定死，只放 4 个 KPI 卡，其余位置留空。
+     下一步从实操 3 第 (2) 条接着发：地图（方向感知配色）→ 左右列图表 → 口径开关 → 分型页 → 城市详情下钻。
+     本地起服务：在项目根目录 python3 -m http.server 8000，打开 http://localhost:8000/apps/commute/ -->
+<style>
+  :root{--bg:#050d22;--panel:#0a1a3a;--line:#18366a;--ink:#e6f1ff;--muted:#8aa1c8;--main:#2ee6ff}
+  html,body{margin:0;height:100%;background:var(--bg);overflow:hidden;font-family:"PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;color:var(--ink)}
+  #stage{width:1920px;height:1080px;transform-origin:0 0;position:absolute;left:0;top:0}
+  header{height:84px;display:flex;align-items:center;padding:0 24px;border-bottom:1px solid var(--line);gap:14px}
+  header h1{font-size:32px;margin:0;letter-spacing:2px}
+  header .sub{color:var(--muted);font-size:14px;margin-right:auto}
+  header select,header input,header button{background:var(--panel);color:var(--ink);border:1px solid var(--line);border-radius:6px;font-size:16px;padding:6px 10px}
+  header input{width:130px}header button{cursor:pointer}
+  nav{position:absolute;left:0;top:85px;width:88px;bottom:40px;border-right:1px solid var(--line);display:flex;flex-direction:column;align-items:center;padding-top:16px;gap:10px}
+  nav a{writing-mode:vertical-rl;letter-spacing:6px;font-size:19px;color:var(--muted);padding:16px 10px;border-radius:8px;cursor:pointer}
+  nav a.on{color:#fff;background:linear-gradient(180deg,#0f7fb0,#0a3a6e)}
+  main{position:absolute;left:100px;top:96px;right:16px;bottom:44px}
+  .page{display:none;height:100%}.page.on{display:grid}
+  #cockpit{grid-template-columns:repeat(12,1fr);grid-template-rows:140px 1fr 1fr;gap:14px}
+  #rank,#typo{grid-template-columns:1fr;gap:14px}
+  .card,.box{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:14px 18px;box-sizing:border-box;min-height:0}
+  .card{grid-column:span 3}.card .k{color:var(--muted);font-size:16px}.card .v{font-size:40px;font-weight:700;margin-top:6px;color:var(--main)}
+  .card .v small{font-size:18px;color:var(--muted);margin-left:6px}.card .n{color:var(--muted);font-size:13px;margin-top:4px}
+  .empty{border:1px dashed var(--line);border-radius:10px;display:flex;align-items:center;justify-content:center;color:var(--muted);font-size:16px}
+  footer{position:absolute;left:100px;right:16px;bottom:8px;color:var(--muted);font-size:13px}
+</style>
+</head>
+<body>
+<div id="stage">
+  <header>
+    <h1>中国主要城市通勤监测驾驶舱</h1><span class="sub">45 城 · 中心城建成区通勤人口</span>
+    指标 <select id="ind"></select>
+    年份 <select id="year"></select>
+    <input id="search" list="cityList" placeholder="搜城市"><datalist id="cityList"></datalist>
+    <button id="reset">重置</button>
+  </header>
+  <nav><a data-t="cockpit">驾驶舱</a><a data-t="rank">排名</a><a data-t="typo">分型</a></nav>
+  <main>
+    <section id="cockpit" class="page">
+      <div class="card"><div class="k" id="k1t"></div><div class="v" id="k1"></div><div class="n" id="k1n"></div></div>
+      <div class="card"><div class="k">城市</div><div class="v" id="k2"></div><div class="n" id="k2n"></div></div>
+      <div class="card"><div class="k">指标</div><div class="v" id="k3"></div><div class="n" id="k3n"></div></div>
+      <div class="card"><div class="k">年份</div><div class="v" id="k4"></div><div class="n" id="k4n"></div></div>
+      <div class="empty" style="grid-column:span 3;grid-row:span 2">左列：分规模均值 + 报告参照（第 (3) 条）</div>
+      <div class="empty" style="grid-column:span 6;grid-row:span 2">中国地图 · 45 城气泡（第 (2) 条）</div>
+      <div class="empty" style="grid-column:span 3;grid-row:span 2">右列：最优 / 最劣各 8 城（第 (3) 条）</div>
+    </section>
+    <section id="rank" class="page"><div class="empty">45 城排名（后续自己加）</div></section>
+    <section id="typo" class="page"><div class="empty">分型页：地图按四类着色 + 四类雷达 + 成员列表（第 (5) 条）</div></section>
+  </main>
+  <footer>数据：中规院《2025年中国主要城市通勤监测报告》；人口：第七次全国人口普查</footer>
+</div>
+<script src="../../assets/echarts.min.js"></script>
+<script src="../../assets/china.js"></script>
+<script src="./data.js"></script>
+<script>
+const D = window.CM_DATA, M = D.meta, CT = M.cities, Y = M.years, IND = M.indicators;
+const S = {tab: 'cockpit', ind: 0, y: Y[Y.length - 1]};
+const $ = id => document.getElementById(id);
+const fmt = (v, d = 1) => v == null ? '—' : (+v).toLocaleString('zh-CN', {maximumFractionDigits: d, minimumFractionDigits: d});
+IND.forEach((o, i) => $('ind').add(new Option(o.name, i)));
+Y.slice().reverse().forEach(y => $('year').add(new Option(y, y)));
+CT.forEach(c => $('cityList').appendChild(new Option(c.short)));
+$('ind').onchange = e => { S.ind = +e.target.value; render(); };
+$('year').onchange = e => { S.y = +e.target.value; render(); };
+$('reset').onclick = () => { Object.assign(S, {tab: 'cockpit', ind: 0, y: Y[Y.length - 1]}); $('search').value = ''; render(); };
+document.querySelectorAll('nav a').forEach(a => a.onclick = () => { S.tab = a.dataset.t; render(); });
+
+function render() {
+  $('ind').value = S.ind; $('year').value = S.y;
+  document.querySelectorAll('nav a').forEach(a => a.classList.toggle('on', a.dataset.t === S.tab));
+  document.querySelectorAll('.page').forEach(s => s.classList.toggle('on', s.id === S.tab));
+  const o = IND[S.ind], a = D.values[S.ind][Y.indexOf(S.y)];
+  const d = a.map((v, k) => ({v, w: CT[k].pop})).filter(x => x.v != null);
+  const m = d.reduce((s, x) => s + x.v * x.w, 0) / d.reduce((s, x) => s + x.w, 0);   // 人口加权：与报告「总体平均」同口径
+  $('k1t').textContent = `${o.name} · 45 城总体（人口加权）`;
+  $('k1').innerHTML = `${fmt(m, 2)}<small>${o.unit}</small>`; $('k1n').textContent = `${d.length} 城有数据，缺失不参与`;
+  $('k2').innerHTML = `${CT.length}<small>城</small>`; $('k2n').textContent = M.classes.join(' · ');
+  $('k3').innerHTML = `${IND.length}<small>项</small>`; $('k3n').textContent = '+1 越大越好 · −1 越小越好 · 0 中性';
+  $('k4').innerHTML = `${Y[0]}–${Y[Y.length - 1]}`; $('k4n').textContent = `调查期 ${M.survey}`;
+}
+function fit() { const s = Math.min(innerWidth / 1920, innerHeight / 1080); $('stage').style.transform = `scale(${s})`; }
+addEventListener('resize', fit);
+fit(); render();
+</script>
+</body>
+</html>

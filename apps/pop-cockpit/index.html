@@ -1,0 +1,1076 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>中国人口版图</title>
+<style>
+  :root {
+    /* 全站只用一个主色 + 一个强调色：蓝 = 底色 / 流出 / 减少，红 = 流入 / 增加 / 强调 */
+    --main: #3a93ee;
+    --accent: #ef5f4c;
+    --bg: #030915;
+    --stage: #050d1f;
+    --panel-line: rgba(90, 160, 240, .22);
+    --main-dim: rgba(58, 147, 238, .14);
+    --text: #e3eeff;
+    --text-2: #9fb3d1;
+    --text-3: #7a91b5;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; height: 100%; overflow: hidden;
+    background: var(--bg); color: var(--text);
+    font-family: "PingFang SC", "Microsoft YaHei", "Noto Sans SC", system-ui, sans-serif;
+  }
+
+  /* —— 1920×1080 设计稿，JS 按窗口等比缩放 —— */
+  #stage {
+    position: absolute; left: 50%; top: 50%;
+    width: 1920px; height: 1080px;
+    transform-origin: 50% 50%;
+    display: grid;
+    grid-template-columns: 104px minmax(0, 1fr);
+    grid-template-rows: 88px minmax(0, 1fr) 34px;
+    background-color: var(--stage);
+    background-image:
+      radial-gradient(1200px 560px at 50% -12%, rgba(40, 110, 220, .26), transparent 70%),
+      linear-gradient(rgba(80, 150, 255, .045) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(80, 150, 255, .045) 1px, transparent 1px);
+    background-size: auto, 40px 40px, 40px 40px;
+  }
+
+  /* —— 顶部 —— */
+  .topbar {
+    grid-column: 1 / -1;
+    position: relative;
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 0 32px;
+    border-bottom: 1px solid var(--panel-line);
+    background: linear-gradient(180deg, rgba(10, 34, 72, .7), rgba(6, 18, 40, .3));
+  }
+  .topbar::after {
+    content: ""; position: absolute; left: 30%; right: 30%; bottom: -1px; height: 2px;
+    background: linear-gradient(90deg, transparent, var(--main), transparent);
+  }
+  .brand { display: flex; align-items: baseline; gap: 20px; }
+  .brand h1 {
+    margin: 0; font-size: 34px; font-weight: 600; letter-spacing: 6px;
+    text-shadow: 0 0 18px rgba(58, 147, 238, .55);
+  }
+  .brand span { font-size: 15px; color: var(--text-2); letter-spacing: 1px; }
+
+  .controls { display: flex; align-items: center; gap: 24px; }
+  .controls label { display: flex; align-items: center; gap: 10px; font-size: 16px; color: var(--text-2); }
+  .controls select, .controls button {
+    height: 40px; font: inherit; font-size: 17px; border-radius: 4px; cursor: pointer;
+  }
+  .controls select {
+    appearance: none; -webkit-appearance: none;
+    min-width: 128px; padding: 0 38px 0 14px;
+    color: var(--text); background-color: rgba(6, 24, 52, .9);
+    border: 1px solid rgba(58, 147, 238, .55);
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8'%3E%3Cpath d='M1 1l5 5 5-5' fill='none' stroke='%233a93ee' stroke-width='2'/%3E%3C/svg%3E");
+    background-repeat: no-repeat; background-position: right 14px center;
+  }
+  .controls select:focus-visible, .controls button:focus-visible, .nav-item:focus-visible {
+    outline: 2px solid var(--main); outline-offset: 2px;
+  }
+  .controls select option { background: #071a38; }
+  .controls button {
+    padding: 0 22px; color: var(--text);
+    background: var(--main-dim); border: 1px solid var(--main);
+  }
+  .controls button:hover { background: rgba(58, 147, 238, .28); }
+  .controls #sel-chip { color: #fff; border-color: var(--accent); background: rgba(239, 95, 76, .16); padding: 0 16px; }
+  .controls #sel-chip:hover { background: rgba(239, 95, 76, .3); }
+  .controls #sel-chip b { font-weight: 600; }
+  .controls #sel-chip[hidden] { display: none; }
+
+  /* —— 左侧竖排菜单 —— */
+  .sidenav {
+    display: flex; flex-direction: column; gap: 10px;
+    padding: 20px 12px;
+    border-right: 1px solid var(--panel-line);
+    background: rgba(6, 18, 40, .35);
+  }
+  .nav-item {
+    height: 84px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px;
+    font: inherit; font-size: 16px; letter-spacing: 2px; color: var(--text-2);
+    background: transparent; border: 1px solid transparent; border-radius: 6px; cursor: pointer;
+  }
+  .nav-item svg { width: 26px; height: 26px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+  .nav-item:hover { color: var(--text); background: rgba(58, 147, 238, .08); }
+  .nav-item.active {
+    color: #fff; background: var(--main-dim);
+    border-color: rgba(58, 147, 238, .5); box-shadow: inset 3px 0 0 var(--main);
+  }
+
+  /* —— 页面：12 列栅格 —— */
+  main { min-width: 0; min-height: 0; padding: 18px 24px 14px; }
+  .page {
+    display: none; height: 100%;
+    grid-template-columns: repeat(12, minmax(0, 1fr));
+    gap: 16px;
+  }
+  .page.active { display: grid; }
+  #page-overview { grid-template-rows: 148px repeat(3, minmax(0, 1fr)); }
+  #page-flow, #page-type { grid-template-rows: repeat(3, minmax(0, 1fr)); }
+
+  /* —— 面板 —— */
+  .panel {
+    position: relative; min-width: 0; min-height: 0;
+    display: flex; flex-direction: column;
+    padding: 14px 16px 12px;
+    background: linear-gradient(180deg, rgba(14, 42, 86, .55), rgba(8, 24, 52, .55));
+    border: 1px solid var(--panel-line);
+  }
+  .panel::before, .panel::after {
+    content: ""; position: absolute; width: 14px; height: 14px;
+    border: 2px solid var(--main); pointer-events: none;
+  }
+  .panel::before { left: -1px; top: -1px; border-right: 0; border-bottom: 0; }
+  .panel::after { right: -1px; bottom: -1px; border-left: 0; border-top: 0; }
+  .panel-hd { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin-bottom: 8px; }
+  .panel-hd h3 {
+    margin: 0; padding-left: 12px; border-left: 3px solid var(--main);
+    font-size: 19px; font-weight: 600; line-height: 1.1; white-space: nowrap;
+  }
+  .panel-note { font-size: 14px; color: var(--text-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+  /* 图表容器：空的时候显示虚线占位，ECharts 渲染后自动消失 */
+  .chart { flex: 1; min-height: 0; position: relative; }
+  .chart:empty { border: 1px dashed rgba(90, 160, 240, .2); border-radius: 4px; }
+  .chart:empty::after {
+    content: "#" attr(id);
+    position: absolute; inset: 0; display: grid; place-items: center;
+    font: 14px ui-monospace, Menlo, monospace; color: var(--text-3);
+  }
+
+  /* —— 指标卡 —— */
+  .kpi { justify-content: space-between; padding: 16px 22px 14px; }
+  .kpi-hd { display: flex; align-items: center; justify-content: space-between; gap: 12px; font-size: 17px; color: var(--text-2); }
+  .kpi-tag { font-size: 13px; padding: 2px 8px; border-radius: 3px; white-space: nowrap; color: var(--text-2); border: 1px solid rgba(159, 179, 209, .32); }
+  .kpi-tag.live { color: #bcdcff; border-color: rgba(58, 147, 238, .6); }
+  .kpi-val { display: flex; align-items: baseline; gap: 10px; }
+  .kpi-val b { font-size: 46px; font-weight: 600; line-height: 1; color: #fff; }
+  .kpi-val i { font-style: normal; font-size: 17px; color: var(--text-2); }
+  .kpi-val .arrow { font-size: 20px; }
+  .kpi-foot { font-size: 14px; color: var(--text-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .up { color: var(--accent); }
+  .down { color: var(--main); }
+
+  /* —— 流动概况 —— */
+  .mini-grid { flex: 1; min-height: 0; display: grid; grid-template: 1fr 1fr / 1fr 1fr; gap: 10px; }
+  .mini { display: flex; flex-direction: column; justify-content: center; gap: 6px; padding: 0 16px; background: rgba(58, 147, 238, .08); border-radius: 4px; }
+  .mini span { font-size: 14px; color: var(--text-2); }
+  .mini b { font-size: 28px; font-weight: 600; line-height: 1.1; color: #fff; white-space: nowrap; }
+  .mini small { margin-left: 6px; font-size: 14px; font-weight: 400; color: var(--text-2); }
+
+  /* —— 分型页：特征对比表、清单 —— */
+  .swatch { flex: none; width: 12px; height: 12px; border-radius: 2px; }
+  .type-table, .type-list { flex: 1; min-height: 0; display: flex; flex-direction: column; justify-content: space-around; }
+  .tt-row { display: grid; grid-template-columns: 140px repeat(4, minmax(0, 1fr)); gap: 16px; align-items: center; padding: 3px 8px; border-radius: 4px; }
+  .tt-row.head { font-size: 13px; color: var(--text-3); }
+  .tt-row.dim { opacity: .4; }
+  .tt-row.me { background: var(--main-dim); }
+  .tt-name { display: flex; align-items: center; gap: 8px; font-size: 14px; color: var(--text-2); white-space: nowrap; }
+  .tt-row.me .tt-name, .tt-row.own .tt-name { color: #fff; font-weight: 600; }
+  .tt-val { display: block; margin-bottom: 4px; font-size: 14px; color: var(--text); }
+  .tt-track { position: relative; height: 6px; border-radius: 3px; background: rgba(120, 170, 255, .1); }
+  .tt-track i { position: absolute; top: 0; bottom: 0; min-width: 2px; border-radius: 3px; }
+  .tt-track b { position: absolute; top: -2px; bottom: -2px; width: 1px; background: var(--text-3); }
+  .tl-row { display: grid; grid-template-columns: 178px minmax(0, 1fr); gap: 10px; align-items: start; }
+  .tl-name { display: flex; align-items: center; gap: 8px; height: 26px; font-size: 14px; color: var(--text-2); white-space: nowrap; }
+  .tl-row.own .tl-name { color: #fff; font-weight: 600; }
+  .tl-name small { font-size: 13px; font-weight: 400; color: var(--text-3); }
+  .tl-chips { display: flex; flex-wrap: wrap; gap: 4px 6px; }
+  .chip {
+    height: 26px; padding: 0 8px; font: inherit; font-size: 14px; color: var(--text); cursor: pointer;
+    background: rgba(58, 147, 238, .1); border: 1px solid transparent; border-radius: 3px;
+  }
+  .chip:hover { background: rgba(58, 147, 238, .28); }
+  .chip:focus-visible { outline: 2px solid var(--main); outline-offset: 1px; }
+  .chip.on { color: #fff; font-weight: 600; border-color: #fff; }
+
+  /* —— 页脚 —— */
+  .footbar {
+    grid-column: 1 / -1;
+    display: flex; align-items: center; padding: 0 32px;
+    font-size: 14px; color: var(--text-3);
+    border-top: 1px solid var(--panel-line);
+    white-space: nowrap; overflow: hidden;
+  }
+
+  .fatal { height: 100%; display: grid; place-items: center; text-align: center; font-size: 22px; line-height: 1.8; color: var(--accent); }
+  .fatal code { color: var(--text); }
+</style>
+</head>
+<body>
+<div id="stage">
+
+  <header class="topbar">
+    <div class="brand">
+      <h1>中国人口版图</h1>
+      <span>31 省 · 1990–2023 · 七普省际流动</span>
+    </div>
+    <div class="controls">
+      <button id="sel-chip" type="button" title="清除选中，恢复全国" hidden>已选 <b id="sel-name"></b> ✕</button>
+      <label>年份 <select id="sel-year"></select></label>
+      <label>指标
+        <select id="sel-metric">
+          <option value="pop">人口</option>
+          <option value="net">净流入</option>
+          <option value="density">密度</option>
+        </select>
+      </label>
+      <button id="btn-reset" type="button">重置</button>
+    </div>
+  </header>
+
+  <nav class="sidenav">
+    <button class="nav-item active" type="button" data-page="overview">
+      <svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+      总览
+    </button>
+    <button class="nav-item" type="button" data-page="flow">
+      <svg viewBox="0 0 24 24"><circle cx="5" cy="18" r="2"/><circle cx="19" cy="6" r="2"/><path d="M6.5 16.5C9 9 13 7.5 17 6.5"/><path d="M14 5l3 1.5-1.5 3"/></svg>
+      流动
+    </button>
+    <button class="nav-item" type="button" data-page="type">
+      <svg viewBox="0 0 24 24"><path d="M12 3v9h9"/><path d="M21 12a9 9 0 1 1-9-9"/><path d="M15 3.5A9 9 0 0 1 20.5 9H15z"/></svg>
+      分型
+    </button>
+  </nav>
+
+  <main id="main">
+
+    <!-- 总览：第 1 行 4 张指标卡各 3 列；第 2–4 行 左 3 列 | 地图 6 列 | 右 3 列 -->
+    <section class="page active" id="page-overview">
+      <div class="panel kpi" style="grid-column: span 3;">
+        <div class="kpi-hd"><span id="kpi-1-label"></span><span class="kpi-tag live" id="kpi-1-tag"></span></div>
+        <div class="kpi-val"><b id="kpi-1-val">—</b><i id="kpi-1-unit"></i></div>
+        <div class="kpi-foot" id="kpi-1-foot"></div>
+      </div>
+      <div class="panel kpi" style="grid-column: span 3;">
+        <div class="kpi-hd"><span id="kpi-2-label"></span><span class="kpi-tag live" id="kpi-2-tag"></span></div>
+        <div class="kpi-val"><b id="kpi-2-val">—</b><i id="kpi-2-unit"></i><span class="arrow" id="kpi-2-arrow"></span></div>
+        <div class="kpi-foot" id="kpi-2-foot"></div>
+      </div>
+      <div class="panel kpi" style="grid-column: span 3;">
+        <div class="kpi-hd"><span id="kpi-3-label"></span><span class="kpi-tag" id="kpi-3-tag"></span></div>
+        <div class="kpi-val"><b id="kpi-3-val">—</b><i id="kpi-3-unit"></i></div>
+        <div class="kpi-foot" id="kpi-3-foot"></div>
+      </div>
+      <div class="panel kpi" style="grid-column: span 3;">
+        <div class="kpi-hd"><span id="kpi-4-label"></span><span class="kpi-tag" id="kpi-4-tag"></span></div>
+        <div class="kpi-val"><b id="kpi-4-val">—</b><i id="kpi-4-unit"></i></div>
+        <div class="kpi-foot" id="kpi-4-foot"></div>
+      </div>
+
+      <div class="panel" style="grid-column: 1 / span 3; grid-row: 2 / span 2;">
+        <div class="panel-hd"><h3 id="trend-title"></h3><span class="panel-note" id="trend-note"></span></div>
+        <div class="chart" id="chart-trend"></div>
+      </div>
+      <div class="panel" style="grid-column: 1 / span 3; grid-row: 4;">
+        <div class="panel-hd"><h3>人口分型构成</h3><span class="panel-note">2010–2020 · 省份数</span></div>
+        <div class="chart" id="chart-cluster"></div>
+      </div>
+
+      <div class="panel" style="grid-column: 4 / span 6; grid-row: 2 / span 3;">
+        <div class="panel-hd"><h3 id="map-title"></h3><span class="panel-note" id="map-note"></span></div>
+        <div class="chart" id="chart-map"></div>
+      </div>
+
+      <div class="panel" style="grid-column: 10 / span 3; grid-row: 2 / span 2;">
+        <div class="panel-hd"><h3 id="rank-title"></h3><span class="panel-note" id="rank-note"></span></div>
+        <div class="chart" id="chart-rank"></div>
+      </div>
+      <div class="panel" style="grid-column: 10 / span 3; grid-row: 4;">
+        <div class="panel-hd"><h3 id="odtop-title"></h3><span class="panel-note" id="odtop-note"></span></div>
+        <div class="chart" id="chart-od-top"></div>
+      </div>
+    </section>
+
+    <!-- 流动：左 8 列飞线地图跨 3 行；右 4 列 概况 + 来源地 + 去向地 -->
+    <section class="page" id="page-flow">
+      <div class="panel" style="grid-column: 1 / span 8; grid-row: 1 / span 3;">
+        <div class="panel-hd"><h3 id="flow-title"></h3><span class="panel-note" id="flow-note"></span></div>
+        <div class="chart" id="chart-flow-map"></div>
+      </div>
+      <div class="panel" style="grid-column: 9 / span 4; grid-row: 1;">
+        <div class="panel-hd"><h3 id="flow-sum-title"></h3><span class="panel-note">2020 七普 · 万人</span></div>
+        <div class="mini-grid" id="flow-sum"></div>
+      </div>
+      <div class="panel" style="grid-column: 9 / span 4; grid-row: 2;">
+        <div class="panel-hd"><h3 id="src-title"></h3><span class="panel-note" id="src-note"></span></div>
+        <div class="chart" id="chart-src"></div>
+      </div>
+      <div class="panel" style="grid-column: 9 / span 4; grid-row: 3;">
+        <div class="panel-hd"><h3 id="dst-title"></h3><span class="panel-note" id="dst-note"></span></div>
+        <div class="chart" id="chart-dst"></div>
+      </div>
+    </section>
+
+    <!-- 分型：左 7 列分型地图跨 3 行；右 5 列 -->
+    <section class="page" id="page-type">
+      <div class="panel" style="grid-column: 1 / span 7; grid-row: 1 / span 3;">
+        <div class="panel-hd"><h3>人口分型地图</h3><span class="panel-note">2010–2020 · 按增长、净流入、密度、净流入率聚类 · 点省份联动，点空白处恢复</span></div>
+        <div class="chart" id="chart-type-map"></div>
+      </div>
+      <div class="panel" style="grid-column: 8 / span 5; grid-row: 1;">
+        <div class="panel-hd"><h3>各类省份数</h3><span class="panel-note">2010–2020 · 省</span></div>
+        <div class="chart" id="chart-type-count"></div>
+      </div>
+      <div class="panel" style="grid-column: 8 / span 5; grid-row: 2;">
+        <div class="panel-hd"><h3>类别特征对比</h3><span class="panel-note">2010–2020 · 各类省份简单平均</span></div>
+        <div class="type-table" id="type-profile"></div>
+      </div>
+      <div class="panel" style="grid-column: 8 / span 5; grid-row: 3;">
+        <div class="panel-hd"><h3>分型清单</h3><span class="panel-note">2010–2020 · 31 省 · 各类内按净流入排序</span></div>
+        <div class="type-list" id="type-list"></div>
+      </div>
+    </section>
+
+  </main>
+
+  <footer class="footbar">
+    数据来源：国家统计局年鉴与人口普查（1990–2023 各省常住人口，普查年为普查推算，其余年份为抽样推算）｜第七次全国人口普查省际流动（2020，户籍地 → 现住地）｜底图：DataV.GeoAtlas｜台湾省、香港、澳门暂无数据
+  </footer>
+</div>
+
+<script src="./data.js"></script>
+<script src="../../assets/china.js"></script>
+<script src="../../assets/echarts.min.js"></script>
+<script>
+(function () {
+  const $ = (id) => document.getElementById(id);
+  const stage = $('stage');
+
+  // 设计稿 1920×1080，按窗口短边等比缩放并居中
+  function fit() {
+    const s = Math.min(innerWidth / 1920, innerHeight / 1080);
+    stage.style.transform = `translate(-50%, -50%) scale(${s})`;
+  }
+  addEventListener('resize', fit);
+  fit();
+
+  const D = window.POP_DATA;
+  if (!D || !D.profile || !window.echarts || !window.CHINA_GEO) {
+    const miss = !D || !D.profile ? './data.js（先运行 python3 apps/pop-cockpit/build_data.py）' : !window.echarts ? '../../assets/echarts.min.js' : '../../assets/china.js';
+    $('main').innerHTML = `<div class="fatal">没有读到 <code>${miss}</code></div>`;
+    return;
+  }
+
+  const { years, provinces } = D.meta;
+  const DEFAULTS = { year: years[years.length - 1], metric: 'pop', page: 'overview', province: null };
+  const state = { ...DEFAULTS };
+
+  // —— 配色：主色、强调色在 CSS :root；色阶都是这两个颜色的明暗阶 ——
+  const css = (name) => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+  const C = {
+    main: css('--main'), accent: css('--accent'),
+    text: css('--text'), text2: css('--text-2'), text3: css('--text-3'),
+    grid: 'rgba(120, 170, 255, .14)',
+    noData: '#16233c',
+    border: 'rgba(190, 215, 255, .42)',
+    seq: ['#1f4f8f', '#2b70c2', '#3a93ee', '#62adf8', '#8fc6ff', '#c4e1ff'],  // 由暗到亮 = 由少到多
+    outArm: ['#3a93ee', '#2b70c2', '#1f4f8f'],  // 流出：多 → 少，最多 = 主色
+    neutral: '#4d586b',
+    inArm: ['#8a3230', '#bd4539', '#ef5f4c'],   // 流入：少 → 多，最多 = 强调色
+    types: ['#ef5f4c', '#a8403a', '#2a62ae', '#3a93ee'],   // 分型：按净流入率由高到低，流入偏红、流出偏蓝，越极端越亮
+  };
+  // pop_panel_long.csv 里 source_type 为「普查推算」的年份，与上年的抽样推算口径不同
+  const CENSUS_YEARS = new Set([1990, 2000, 2010, 2020]);
+
+  const fmt = (n, d = 0) => n.toLocaleString('zh-CN', { minimumFractionDigits: d, maximumFractionDigits: d });
+  const signed = (n, d = 0) => (n > 0 ? '+' : n < 0 ? '−' : '') + fmt(Math.abs(n), d);
+  const wan = (persons) => { const v = persons / 1e4; return fmt(v, Math.abs(v) < 100 ? 1 : 0); };
+  const short = (p) => p.replace(/(省|市|壮族自治区|回族自治区|维吾尔自治区|自治区|特别行政区)$/, '');
+
+  const yearIdx = () => years.indexOf(state.year);
+  const popOf = (p) => D.panel[p][yearIdx()];
+
+  const METRICS = {
+    pop:     { title: '各省常住人口',   rank: '常住人口排行', unit: '万人',   yearly: true,  value: popOf,               text: (v) => fmt(v) },
+    net:     { title: '各省人口净流入', rank: '净流入排行',   unit: '万人',   yearly: false, value: (p) => D.net[p] / 1e4, text: (v) => signed(v, 1) },
+    density: { title: '各省人口密度',   rank: '人口密度排行', unit: '人/km²', yearly: false, value: (p) => D.density[p],  text: (v) => fmt(v, v < 10 ? 1 : 0) },
+  };
+  const timeTag = (m) => (m.yearly ? `${state.year} 年` : '2020 七普');
+
+  // 某年 31 省合计，null 不计入（重庆 1997 年前计入四川，全国合计口径不受影响）
+  function yearTotal(i) {
+    let sum = 0;
+    const missing = [];
+    for (const p of provinces) {
+      const v = D.panel[p][i];
+      if (v == null) missing.push(p); else sum += v;
+    }
+    return { sum, missing };
+  }
+
+  // —— 静态汇总 ——
+  const odTotal = D.od.reduce((s, r) => s + r[2], 0);
+  const inflow = Object.fromEntries(provinces.map((p) => [p, 0]));
+  const outflow = Object.fromEntries(provinces.map((p) => [p, 0]));
+  D.od.forEach(([s, d, n]) => { outflow[s] += n; inflow[d] += n; });
+  const netRank = Object.entries(D.net).sort((a, b) => b[1] - a[1]);
+  const inflowCount = netRank.filter(([, v]) => v > 0).length;
+  const nationalSeries = years.map((_, i) => yearTotal(i).sum);
+  const popMax = Math.max(...provinces.flatMap((p) => D.panel[p].filter((v) => v != null)));
+  const centers = Object.fromEntries(CHINA_GEO.features.filter((f) => f.properties.name).map((f) => [f.properties.name, f.properties.center]));
+  const clusters = {};
+  provinces.forEach((p) => { (clusters[D.cluster[p]] = clusters[D.cluster[p]] || []).push(p); });
+  const clusterOrder = Object.keys(clusters).sort((a, b) => clusters[b].length - clusters[a].length);
+
+  // 分型的四项特征：单位不同，每项各用各的比例尺
+  const FEATURES = [
+    { name: '十年增长', unit: '%',     signed: true,  value: (p) => D.profile[p].growth,  text: (v) => signed(v, 1) },
+    { name: '净流入',   unit: '万人',  signed: true,  value: (p) => D.net[p] / 1e4,       text: (v) => signed(v, Math.abs(v) < 100 ? 1 : 0) },
+    { name: '净流入率', unit: '%',     signed: true,  value: (p) => D.profile[p].netRate, text: (v) => signed(v, 1) },
+    { name: '密度',     unit: '人/km²', signed: false, value: (p) => D.density[p],        text: (v) => fmt(v, v < 10 ? 1 : 0) },
+  ];
+  const clusterMean = (c, f) => clusters[c].reduce((s, p) => s + f.value(p), 0) / clusters[c].length;
+  // 颜色按净流入率排名分配，类别改名也不受影响；同一类在所有页面同色
+  const clusterColor = {};
+  clusterOrder.slice().sort((a, b) => clusterMean(b, FEATURES[2]) - clusterMean(a, FEATURES[2]))
+    .forEach((c, i) => { clusterColor[c] = C.types[i]; });
+
+  echarts.registerMap('china', CHINA_GEO);
+
+  // —— ECharts 公共部分 ——
+  const BASE = {
+    animationDuration: 400,
+    animationDurationUpdate: 300,
+    textStyle: { fontFamily: getComputedStyle(document.body).fontFamily, color: C.text2 },
+    tooltip: {
+      backgroundColor: 'rgba(5, 16, 38, .95)', borderColor: 'rgba(58, 147, 238, .55)', borderWidth: 1,
+      textStyle: { color: C.text2, fontSize: 14 }, confine: true,
+      extraCssText: 'max-width:360px;white-space:normal;line-height:1.6;box-shadow:none;',
+    },
+  };
+  const tipValue = (v, unit) => `<span style="font-size:17px;font-weight:600;color:#fff">${v}</span> ${unit}`;
+  const MAP_EMPHASIS = {
+    label: { show: true, formatter: (e) => short(e.name), color: '#fff', fontSize: 14, textBorderColor: '#06122a', textBorderWidth: 3 },
+    itemStyle: { areaColor: null, borderColor: '#fff', borderWidth: 1.5 },
+  };
+
+  const charts = {};
+  const barRows = {};   // 每张条形图当前的行，点击时反查省份
+  const ON_INIT = {
+    'chart-map': bindMapClicks, 'chart-flow-map': bindMapClicks, 'chart-type-map': bindMapClicks,
+    'chart-rank': bindBarClicks, 'chart-src': bindBarClicks, 'chart-dst': bindBarClicks,
+  };
+  function getChart(id) {
+    if (!charts[id]) {
+      charts[id] = echarts.init($(id), null, { devicePixelRatio: Math.max(2, window.devicePixelRatio || 1) });
+      if (ON_INIT[id]) ON_INIT[id](charts[id], id);
+    }
+    return charts[id];
+  }
+  const draw = (id, option) => getChart(id).setOption(option, { notMerge: true });
+
+  // —— 联动入口：选中 / 取消省份 ——
+  function setProvince(p) {
+    state.province = p;
+    render();
+  }
+  function bindMapClicks(chart) {
+    chart.on('click', (e) => {
+      const name = (e.data && e.data.full) || e.name;
+      if (provinces.includes(name)) setProvince(name);   // 台湾、香港、澳门无数据，不响应
+    });
+    chart.getZr().on('click', (e) => { if (!e.target) setProvince(null); });   // 点空白处恢复
+  }
+  function bindBarClicks(chart, id) {
+    chart.on('click', (e) => {
+      const row = barRows[id] && barRows[id][e.dataIndex];
+      if (row && row.full) setProvince(row.full);
+    });
+  }
+
+  // —— 通用横向条形图 ——
+  // rows: { label, value, color, text, tip, full?, dim?, strong?, rank?, gap? }
+  function barOption(id, rows, axisWidth) {
+    barRows[id] = rows;
+    const vals = rows.map((r) => r.value).filter((v) => v != null);
+    const min = Math.min(0, ...vals), max = Math.max(0, ...vals);
+    const LABEL_ROOM = 66;   // 数值标签的固定留白，防止贴边被裁
+    const left = axisWidth + (min < 0 ? LABEL_ROOM : 0);
+    return {
+      ...BASE,
+      tooltip: { ...BASE.tooltip, trigger: 'item', formatter: (e) => rows[e.dataIndex].tip },
+      grid: { left, right: LABEL_ROOM, top: 2, bottom: 2 },
+      xAxis: { type: 'value', show: false, min, max },
+      yAxis: {
+        type: 'category', inverse: true, data: rows.map((_, i) => i),
+        axisLine: { show: false, onZero: false }, axisTick: { show: false },
+        axisLabel: {
+          interval: 0, align: 'left', margin: left - 2,
+          formatter: (_, i) => {
+            const r = rows[i];
+            if (r.gap) return '{g|⋯}';
+            const name = `{${r.strong ? 'ns' : 'n'}|${r.label}}`;
+            return r.rank ? `{r|${r.rank}}${name}` : name;
+          },
+          rich: {
+            r: { width: 26, align: 'right', color: C.text3, fontSize: 13, padding: [0, 8, 0, 0] },
+            n: { color: C.text2, fontSize: 14 },
+            ns: { color: '#fff', fontSize: 14, fontWeight: 600 },
+            g: { color: C.text3, fontSize: 14, width: 26, align: 'right', padding: [0, 8, 0, 0] },
+          },
+        },
+      },
+      series: [{
+        type: 'bar', barCategoryGap: '34%', barMaxWidth: 14, cursor: rows.some((r) => r.full) ? 'pointer' : 'default',
+        data: rows.map((r) => (r.gap ? null : {
+          value: r.value,
+          itemStyle: {
+            color: r.color, opacity: r.dim ? 0.3 : 1,
+            borderRadius: r.value < 0 ? [4, 0, 0, 4] : [0, 4, 4, 0],
+          },
+          label: {
+            show: true, position: r.value < 0 ? 'left' : 'right', formatter: r.text, fontSize: 13,
+            color: r.strong ? '#fff' : C.text2, fontWeight: r.strong ? 600 : 400,
+          },
+        })),
+        emphasis: { itemStyle: { borderColor: '#fff', borderWidth: 1 } },
+      }],
+    };
+  }
+
+  // —— 第 1 条：地图按当前指标着色 ——
+  function visualMapFor(metric) {
+    const base = {
+      seriesIndex: 0, left: 8, bottom: 8, orient: 'vertical',
+      textStyle: { color: C.text2, fontSize: 13 },
+    };
+    if (metric === 'pop') {
+      const top = Math.ceil(popMax / 1000) * 1000;   // 色阶固定，切年份时颜色才可比
+      return { ...base, type: 'continuous', min: 0, max: top, calculable: false, itemWidth: 14, itemHeight: 150,
+        text: [`${fmt(top)} 万人`, '0'], inRange: { color: C.seq } };
+    }
+    if (metric === 'density') {
+      const s = C.seq;
+      return { ...base, type: 'piecewise', selectedMode: false, showLabel: true, itemWidth: 16, itemHeight: 12, itemGap: 6, itemSymbol: 'rect',
+        text: ['人/km²', ''], textGap: 8,
+        pieces: [
+          { lt: 50, color: s[0], label: '< 50' },
+          { gte: 50, lt: 150, color: s[1], label: '50–150' },
+          { gte: 150, lt: 300, color: s[2], label: '150–300' },
+          { gte: 300, lt: 600, color: s[3], label: '300–600' },
+          { gte: 600, lt: 1000, color: s[4], label: '600–1,000' },
+          { gte: 1000, color: s[5], label: '≥ 1,000' },
+        ] };
+    }
+    const o = C.outArm, n = C.inArm;   // 净流入：发散色，流入红、流出蓝，中间灰
+    return { ...base, type: 'piecewise', selectedMode: false, showLabel: true, itemWidth: 16, itemHeight: 12, itemGap: 6, itemSymbol: 'rect',
+      text: ['万人', ''], textGap: 8,
+      pieces: [
+        { lt: -500, color: o[0], label: '流出 > 500' },
+        { gte: -500, lt: -100, color: o[1], label: '流出 100–500' },
+        { gte: -100, lt: -10, color: o[2], label: '流出 10–100' },
+        { gte: -10, lte: 10, color: C.neutral, label: '±10 以内' },
+        { gt: 10, lte: 100, color: n[0], label: '流入 10–100' },
+        { gt: 100, lte: 500, color: n[1], label: '流入 100–500' },
+        { gt: 500, color: n[2], label: '流入 > 500' },
+      ] };
+  }
+
+  function renderMap() {
+    const m = METRICS[state.metric];
+    const P = state.province;
+    const ranked = provinces.filter((p) => m.value(p) != null).sort((a, b) => m.value(b) - m.value(a));
+    $('map-title').textContent = m.title;
+    $('map-note').textContent = `${timeTag(m)} · ${m.unit}${m.yearly ? '' : ' · 不随年份变化'} · 点省份联动，点空白处恢复`;
+    draw('chart-map', {
+      ...BASE,
+      tooltip: {
+        ...BASE.tooltip, trigger: 'item',
+        formatter: (e) => {
+          if (!e.name) return '';
+          const v = provinces.includes(e.name) ? m.value(e.name) : null;
+          if (v == null) {
+            const why = e.name === '重庆市' ? '1997 年前计入四川省' : '暂无数据';
+            return `${e.name}<br>${why}`;
+          }
+          return `${tipValue(m.text(v), m.unit)}<br>${e.name} · 第 ${ranked.indexOf(e.name) + 1} / ${ranked.length} 名 · ${timeTag(m)}`;
+        },
+      },
+      visualMap: visualMapFor(state.metric),
+      series: [{
+        type: 'map', map: 'china', roam: false, selectedMode: false,
+        layoutCenter: ['50%', '51%'], layoutSize: '112%',
+        itemStyle: { areaColor: C.noData, borderColor: C.border, borderWidth: 0.8 },
+        label: { show: false },
+        emphasis: MAP_EMPHASIS,
+        data: provinces.map((p) => {
+          const v = m.value(p);
+          const item = { name: p, value: v == null ? '-' : v };
+          if (p === P) {
+            item.itemStyle = { borderColor: '#fff', borderWidth: 2.5 };
+            item.label = { show: true, formatter: short(p), color: '#fff', fontSize: 15, fontWeight: 600, textBorderColor: '#06122a', textBorderWidth: 3 };
+          }
+          return item;
+        }),
+      }],
+    });
+  }
+
+  // —— 第 2 条：当前指标排行（前 10 + 后 5），选中省不在其中时插入显示 ——
+  function renderRank() {
+    const m = METRICS[state.metric];
+    const P = state.province;
+    const ranked = provinces.map((p) => ({ p, v: m.value(p) })).filter((r) => r.v != null).sort((a, b) => b.v - a.v);
+    const n = ranked.length;
+    const row = (i) => {
+      const { p, v } = ranked[i];
+      return {
+        label: short(p), value: v, full: p, rank: i + 1,
+        color: state.metric === 'net' && v > 0 ? C.accent : C.main,
+        text: m.text(v), dim: !!P && p !== P, strong: p === P,
+        tip: `${tipValue(m.text(v), m.unit)}<br>${p} · 第 ${i + 1} / ${n} 名 · ${timeTag(m)}`,
+      };
+    };
+    const rows = [];
+    for (let i = 0; i < 10; i++) rows.push(row(i));
+    const sel = ranked.findIndex((r) => r.p === P);
+    rows.push({ gap: true });
+    if (sel >= 10 && sel < n - 5) { rows.push(row(sel)); rows.push({ gap: true }); }
+    for (let i = n - 5; i < n; i++) rows.push(row(i));
+
+    $('rank-title').textContent = m.rank;
+    $('rank-note').textContent = `${timeTag(m)} · ${m.unit} · 前 10 + 后 5`;
+    draw('chart-rank', barOption('chart-rank', rows, 84));
+  }
+
+  // —— 第 3 条：左侧折线，默认全国合计 ——
+  function renderTrend() {
+    const P = state.province;
+    const name = P || '全国合计';
+    const data = P ? D.panel[P] : nationalSeries;
+    const i = yearIdx();
+    const v = data[i];
+    $('trend-title').textContent = P ? `${short(P)}人口走势` : '全国人口走势';
+    const first = data.findIndex((x) => x != null);
+    $('trend-note').textContent = `${years[first]}–${years[years.length - 1]} · 万人`
+      + (P === '四川省' ? ' · 1997 重庆分出' : P === '重庆市' ? ' · 此前计入四川' : '');
+    const align = i > years.length * 0.7 ? 'right' : i < years.length * 0.3 ? 'left' : 'center';
+    draw('chart-trend', {
+      ...BASE,
+      grid: { left: 62, right: 22, top: 34, bottom: 28 },
+      tooltip: {
+        ...BASE.tooltip, trigger: 'axis', axisPointer: { type: 'line', lineStyle: { color: C.text3 } },
+        formatter: ([e]) => (e.value == null
+          ? `${e.axisValue} 年<br>${name}：无数据`
+          : `${tipValue(fmt(e.value), '万人')}<br>${name} · ${e.axisValue} 年${CENSUS_YEARS.has(+e.axisValue) ? '<br>普查年，与上年推算口径不同' : ''}`),
+      },
+      xAxis: {
+        type: 'category', data: years.map(String), boundaryGap: false,
+        axisLine: { lineStyle: { color: C.grid } }, axisTick: { show: false },
+        axisLabel: { color: C.text3, fontSize: 13, interval: (_, y) => +y % 5 === 0 },
+      },
+      yAxis: {
+        type: 'value', scale: true, splitNumber: 5,
+        axisLabel: { color: C.text3, fontSize: 13, formatter: (x) => fmt(x) },
+        splitLine: { lineStyle: { color: C.grid } },
+      },
+      series: [{
+        type: 'line', name, data, showSymbol: false, connectNulls: false,
+        lineStyle: { width: 2, color: C.main }, itemStyle: { color: C.main },
+        emphasis: { disabled: true },
+        markLine: { silent: true, symbol: 'none', label: { show: false }, lineStyle: { color: C.accent, type: 'dashed', width: 1 }, data: [{ xAxis: String(state.year) }] },
+        markPoint: {
+          silent: true,
+          data: v == null ? [] : [{
+            coord: [String(state.year), v], symbol: 'circle', symbolSize: 9, itemStyle: { color: C.accent },
+            label: { show: true, position: 'top', align, distance: 8, formatter: `${state.year} 年 ${fmt(v)}`, color: C.text, fontSize: 14 },
+          }],
+        },
+      }],
+    });
+  }
+
+  // —— 指标卡：无选中显示全国，选中显示该省 ——
+  function setKpi(n, { label, tag, val, unit, foot }) {
+    $(`kpi-${n}-label`).textContent = label;
+    $(`kpi-${n}-tag`).textContent = tag;
+    $(`kpi-${n}-val`).textContent = val;
+    $(`kpi-${n}-unit`).textContent = unit;
+    $(`kpi-${n}-foot`).textContent = foot;
+  }
+  function renderKpis() {
+    const P = state.province, y = state.year, i = yearIdx();
+    const who = P ? `${short(P)} · ` : '';
+    const total = yearTotal(i);
+    const cur = P ? D.panel[P][i] : total.sum;
+    const prevIdx = i - 1;
+    const prev = prevIdx < 0 ? null : (P ? D.panel[P][prevIdx] : yearTotal(prevIdx).sum);
+
+    let foot1;
+    if (P) {
+      if (cur == null) foot1 = P === '重庆市' ? '1997 年前计入四川省' : `${y} 年无数据`;
+      else {
+        const valid = provinces.filter((p) => D.panel[p][i] != null).sort((a, b) => D.panel[b][i] - D.panel[a][i]);
+        foot1 = `占全国 ${fmt(cur / total.sum * 100, 1)}% · 第 ${valid.indexOf(P) + 1} / ${valid.length} 名`;
+      }
+    } else {
+      const n = provinces.length - total.missing.length;
+      foot1 = !total.missing.length ? `${n} 省合计`
+        : total.missing.length === 1 && total.missing[0] === '重庆市' ? `${n} 省合计 · 重庆市 1997 年前计入四川省`
+        : `${n} 省合计 · ${total.missing.join('、')}无数据`;
+    }
+    setKpi(1, { label: '常住人口', tag: `${who}${y} 年`, val: cur == null ? '—' : fmt(cur), unit: '万人', foot: foot1 });
+
+    const arrow = $('kpi-2-arrow');
+    if (cur == null || prev == null) {
+      arrow.textContent = '';
+      setKpi(2, { label: '较上年增减', tag: `${who}${y} 年`, val: '—', unit: '万人',
+        foot: prevIdx < 0 ? `${years[0]} 年为起始年，无上年数据` : cur == null ? `${y} 年无数据` : `${y - 1} 年无数据` });
+    } else {
+      const d = cur - prev;
+      arrow.textContent = d > 0 ? '▲' : d < 0 ? '▼' : '';
+      arrow.className = 'arrow ' + (d > 0 ? 'up' : 'down');
+      const why = P === '四川省' && y === 1997 ? ' · 重庆分出，非人口减少'
+        : CENSUS_YEARS.has(y) ? ' · 普查年，口径不同' : '';
+      setKpi(2, { label: '较上年增减', tag: `${who}${y} 年`, val: signed(d, Math.abs(d) < 10 && d % 1 ? 1 : 0), unit: '万人',
+        foot: `较 ${y - 1} 年 ${signed(d / prev * 100, 2)}%${why}` });
+    }
+
+    if (P) {
+      const top = D.od.find((r) => r[1] === P);
+      setKpi(3, { label: '跨省流入人口', tag: `${who}2020 七普`, val: wan(inflow[P]), unit: '万人',
+        foot: `流出 ${wan(outflow[P])} 万人 · 来源最多 ${short(top[0])}` });
+      const r = netRank.findIndex(([p]) => p === P) + 1;
+      setKpi(4, { label: '人口净流入', tag: `${who}2020 七普`, val: signed(D.net[P] / 1e4, 1), unit: '万人',
+        foot: `第 ${r} / ${provinces.length} 名 · ${D.cluster[P]}` });
+    } else {
+      setKpi(3, { label: '跨省流动人口', tag: '2020 七普', val: fmt(odTotal / 1e4), unit: '万人',
+        foot: `${fmt(D.od.length)} 条省际通道 · 户籍地 → 现住地` });
+      setKpi(4, { label: '人口净流入省份', tag: '2020 七普', val: String(inflowCount), unit: `/ ${provinces.length} 省`,
+        foot: `净流入最多：${netRank[0][0]} ${signed(netRank[0][1] / 1e4, 1)} 万人` });
+    }
+  }
+
+  // —— 分型构成：总览左下、分型页共用 ——
+  function clusterRows() {
+    const P = state.province;
+    const pc = P ? D.cluster[P] : null;
+    return clusterOrder.map((c) => ({
+      label: c, value: clusters[c].length, color: clusterColor[c], text: `${clusters[c].length} 省`,
+      dim: !!pc && c !== pc, strong: c === pc,
+      tip: `${tipValue(clusters[c].length, '省')}<br>${c}：${clusters[c].map(short).join('、')}`,
+    }));
+  }
+  function renderCluster() {
+    draw('chart-cluster', barOption('chart-cluster', clusterRows(), 124));
+  }
+
+  // —— 总览右下：主要流动通道 ——
+  function renderOdTop() {
+    const P = state.province;
+    const list = (P ? D.od.filter((r) => r[0] === P || r[1] === P) : D.od).slice(0, 10);
+    $('odtop-title').textContent = P ? `${short(P)}相关通道 Top 10` : '主要流动通道 Top 10';
+    $('odtop-note').textContent = P ? '2020 七普 · 万人 · 红入蓝出' : '2020 七普 · 万人';
+    const rows = list.map(([s, d, n]) => ({
+      label: `${short(s)}→${short(d)}`, value: n / 1e4,
+      color: P && d === P ? C.accent : C.main, text: wan(n),
+      tip: `${tipValue(wan(n), '万人')}<br>${s} → ${d} · 2020 七普`,
+    }));
+    draw('chart-od-top', barOption('chart-od-top', rows, 112));
+  }
+
+  // —— 第 5 条：「流动」页下钻 ——
+  function renderFlow() {
+    const P = state.province;
+    const ins = P ? D.od.filter((r) => r[1] === P).slice(0, 10) : [];
+    const outs = P ? D.od.filter((r) => r[0] === P).slice(0, 10) : [];
+    const top = P ? [] : D.od.slice(0, 15);
+    const maxN = Math.max(...[...ins, ...outs, ...top].map((r) => r[2]));
+
+    // 飞线汇聚处会盖住省份，所以线也能点：选中省时跳到对端省，全国视图跳到迁入省
+    const linesSeries = (name, list, color) => ({
+      type: 'lines', name, coordinateSystem: 'geo', zlevel: 1,
+      effect: { show: true, symbol: 'arrow', symbolSize: 8, period: 3.5, trailLength: 0.25, color },
+      lineStyle: { color, curveness: 0.22, opacity: 0.55 },
+      emphasis: { lineStyle: { opacity: 1 } },
+      tooltip: { formatter: (e) => `${tipValue(wan(e.data.value), '万人')}<br>${e.data.name} · 2020 七普<br>点击查看${short(e.data.full)}` },
+      data: list.map(([s, d, n]) => ({
+        name: `${s} → ${d}`, value: n, coords: [centers[s], centers[d]],
+        full: P && d === P ? s : d,
+        lineStyle: { width: 1 + 4 * n / maxN },
+      })),
+    });
+    const nodes = [...new Set([...ins, ...outs, ...top].flatMap((r) => [r[0], r[1]]))].filter((p) => p !== P);
+    const series = P
+      ? [linesSeries('迁入', ins, C.accent), linesSeries('迁出', outs, C.main)]
+      : [linesSeries('主要通道', top, C.main)];
+    series.push({
+      type: 'scatter', coordinateSystem: 'geo', zlevel: 2, symbolSize: 7, cursor: 'pointer',
+      itemStyle: { color: C.text, borderColor: '#06122a', borderWidth: 1 },
+      label: { show: true, position: 'right', distance: 4, formatter: '{b}', color: C.text, fontSize: 13, textBorderColor: '#06122a', textBorderWidth: 3 },
+      tooltip: { formatter: (e) => `${e.data.full}<br>点击查看该省流动` },
+      data: nodes.map((p) => ({ name: short(p), full: p, value: centers[p] })),
+    });
+    if (P) {
+      series.push({
+        type: 'effectScatter', coordinateSystem: 'geo', zlevel: 3, symbolSize: 13,
+        rippleEffect: { brushType: 'stroke', scale: 3.2 },
+        itemStyle: { color: '#fff' },
+        label: { show: true, position: 'top', distance: 8, formatter: '{b}', color: '#fff', fontSize: 16, fontWeight: 600, textBorderColor: '#06122a', textBorderWidth: 3 },
+        tooltip: { formatter: (e) => e.data.full },
+        data: [{ name: short(P), full: P, value: centers[P] }],
+      });
+    }
+
+    $('flow-title').textContent = P ? `${P} · 迁入 / 迁出飞线` : '全国主要流动通道';
+    $('flow-note').textContent = P
+      ? '2020 七普 · 万人 · 迁入、迁出各前 10 条 · 点空白处恢复'
+      : '2020 七普 · 万人 · 前 15 条 · 点省份查看迁入 / 迁出';
+
+    draw('chart-flow-map', {
+      ...BASE,
+      tooltip: { ...BASE.tooltip, trigger: 'item' },
+      ...(P ? { legend: {
+        data: ['迁入', '迁出'], left: 12, bottom: 12, orient: 'vertical', icon: 'rect', itemWidth: 22, itemHeight: 3, selectedMode: false,
+        textStyle: { color: C.text2, fontSize: 14 },
+      } } : {}),
+      geo: {
+        map: 'china', roam: false, layoutCenter: ['50%', '51%'], layoutSize: '118%',
+        itemStyle: { areaColor: '#0f2547', borderColor: C.border, borderWidth: 0.8 },
+        label: { show: false },
+        emphasis: {
+          itemStyle: { areaColor: '#1a3a6e' },
+          label: { show: true, formatter: (e) => short(e.name), color: '#fff', fontSize: 14, textBorderColor: '#06122a', textBorderWidth: 3 },
+        },
+        tooltip: {
+          show: true,
+          formatter: (e) => (provinces.includes(e.name)
+            ? `${tipValue(signed(D.net[e.name] / 1e4, 1), '万人净流入')}<br>${e.name} · 2020 七普`
+            : (e.name ? `${e.name}<br>暂无数据` : '')),
+        },
+        regions: P ? [{ name: P, itemStyle: { areaColor: '#1f4f8f', borderColor: '#fff', borderWidth: 1.5 } }] : [],
+      },
+      series,
+    });
+
+    // 概况
+    $('flow-sum-title').textContent = P ? `${P} · 流动概况` : '全国流动概况';
+    const topIn = P ? D.od.find((r) => r[1] === P) : null;
+    const stats = P
+      ? [['流入', wan(inflow[P]), '万人'], ['流出', wan(outflow[P]), '万人'],
+         ['净流入', signed(D.net[P] / 1e4, 1), '万人'], ['最大来源', short(topIn[0]), `${wan(topIn[2])} 万人`]]
+      : [['跨省流动', fmt(odTotal / 1e4), '万人'], ['省际通道', fmt(D.od.length), '条'],
+         ['净流入省份', String(inflowCount), '省'], ['净流出省份', String(provinces.length - inflowCount), '省']];
+    const box = $('flow-sum');
+    box.textContent = '';
+    stats.forEach(([label, val, unit]) => {
+      const el = document.createElement('div');
+      el.className = 'mini';
+      const a = document.createElement('span'); a.textContent = label;
+      const b = document.createElement('b'); b.textContent = val;
+      const c = document.createElement('small'); c.textContent = unit;
+      b.appendChild(c);
+      el.append(a, b);
+      box.appendChild(el);
+    });
+
+    // 来源地 / 去向地：有选中看该省，无选中看全国总量
+    const flowRows = (list, color, share) => list.map(([p, n]) => ({
+      label: short(p), value: n / 1e4, full: p, color, text: wan(n),
+      tip: `${tipValue(wan(n), '万人')}<br>${share(p, n)}`,
+    }));
+    if (P) {
+      $('src-title').textContent = `${short(P)} · TOP10 来源地`;
+      $('src-note').textContent = '2020 七普 · 万人 · 按户籍地';
+      $('dst-title').textContent = `${short(P)} · TOP10 去向地`;
+      $('dst-note').textContent = '2020 七普 · 万人 · 按现住地';
+      draw('chart-src', barOption('chart-src', flowRows(ins.map((r) => [r[0], r[2]]), C.accent,
+        (p, n) => `${p} → ${P} · 占流入 ${fmt(n / inflow[P] * 100, 1)}%`), 72));
+      draw('chart-dst', barOption('chart-dst', flowRows(outs.map((r) => [r[1], r[2]]), C.main,
+        (p, n) => `${P} → ${p} · 占流出 ${fmt(n / outflow[P] * 100, 1)}%`), 72));
+    } else {
+      const byTotal = (o) => Object.entries(o).sort((a, b) => b[1] - a[1]).slice(0, 10);
+      $('src-title').textContent = '流入人口 Top 10 省';
+      $('src-note').textContent = '2020 七普 · 万人 · 按现住地';
+      $('dst-title').textContent = '流出人口 Top 10 省';
+      $('dst-note').textContent = '2020 七普 · 万人 · 按户籍地';
+      draw('chart-src', barOption('chart-src', flowRows(byTotal(inflow), C.accent,
+        (p, n) => `${p} · 占全国跨省流动 ${fmt(n / odTotal * 100, 1)}%`), 72));
+      draw('chart-dst', barOption('chart-dst', flowRows(byTotal(outflow), C.main,
+        (p, n) => `${p} · 占全国跨省流动 ${fmt(n / odTotal * 100, 1)}%`), 72));
+    }
+  }
+
+  // —— 「分型」页 ——
+  function renderTypeMap() {
+    const P = state.province;
+    draw('chart-type-map', {
+      ...BASE,
+      tooltip: {
+        ...BASE.tooltip, trigger: 'item',
+        formatter: (e) => {
+          if (!e.name) return '';
+          if (!provinces.includes(e.name)) return `${e.name}<br>暂无数据`;
+          const lines = FEATURES.map((f) => `${f.name} ${f.text(f.value(e.name))} ${f.unit}`).join('<br>');
+          return `<span style="font-size:17px;font-weight:600;color:#fff">${D.cluster[e.name]}</span><br>${e.name}<br>${lines}`;
+        },
+      },
+      // ECharts 竖排图例默认大值在上，inverse 后和右侧面板同序
+      visualMap: {
+        type: 'piecewise', seriesIndex: 0, left: 8, bottom: 8, orient: 'vertical', inverse: true,
+        selectedMode: false, showLabel: true, itemWidth: 16, itemHeight: 12, itemGap: 8, itemSymbol: 'rect',
+        textStyle: { color: C.text2, fontSize: 14 },
+        pieces: clusterOrder.map((c, i) => ({ value: i, label: `${c} · ${clusters[c].length} 省`, color: clusterColor[c] })),
+      },
+      series: [{
+        type: 'map', map: 'china', roam: false, selectedMode: false,
+        layoutCenter: ['50%', '51%'], layoutSize: '112%',
+        itemStyle: { areaColor: C.noData, borderColor: C.border, borderWidth: 0.8 },
+        label: { show: false },
+        emphasis: MAP_EMPHASIS,
+        data: provinces.map((p) => ({
+          name: p, value: clusterOrder.indexOf(D.cluster[p]),
+          label: {
+            show: true, formatter: short(p), color: '#fff', textBorderColor: '#06122a',
+            offset: { 河北省: [-10, 24], 天津市: [10, 0] }[p] || [0, 0],   // 京津冀标签会叠在一起，错开
+            fontSize: p === P ? 15 : 13, fontWeight: p === P ? 600 : 400, textBorderWidth: p === P ? 3 : 2,
+          },
+          ...(p === P ? { itemStyle: { borderColor: '#fff', borderWidth: 2.5 } } : {}),
+        })),
+      }],
+    });
+  }
+
+  function el(tag, className, text) {
+    const n = document.createElement(tag);
+    if (className) n.className = className;
+    if (text != null) n.textContent = text;
+    return n;
+  }
+  function swatch(c) {
+    const s = el('span', 'swatch');
+    s.style.background = clusterColor[c];
+    return s;
+  }
+
+  // 四项单位不同，不能画在一根轴上：每列一个比例尺，数值都直接写出来
+  function renderTypeProfile() {
+    const P = state.province;
+    const pc = P ? D.cluster[P] : null;
+    const rows = clusterOrder.map((c) => ({
+      label: c, cluster: c, cls: !pc ? '' : c === pc ? 'own' : 'dim',
+      vals: FEATURES.map((f) => clusterMean(c, f)),
+    }));
+    if (P) rows.unshift({ label: `${short(P)}（所选）`, cluster: pc, cls: 'me', vals: FEATURES.map((f) => f.value(P)) });
+    const ranges = FEATURES.map((_, j) => {
+      const vs = rows.map((r) => r.vals[j]);
+      return [Math.min(0, ...vs), Math.max(0, ...vs)];
+    });
+
+    const box = $('type-profile');
+    box.textContent = '';
+    const head = el('div', 'tt-row head');
+    head.appendChild(el('span', '', '类别'));
+    FEATURES.forEach((f) => head.appendChild(el('span', '', `${f.name} ${f.unit}`)));
+    box.appendChild(head);
+    rows.forEach((r) => {
+      const row = el('div', `tt-row ${r.cls}`);
+      const name = el('div', 'tt-name');
+      name.append(swatch(r.cluster), el('span', '', r.label));
+      row.appendChild(name);
+      FEATURES.forEach((f, j) => {
+        const v = r.vals[j];
+        const [lo, hi] = ranges[j];
+        const span = (hi - lo) || 1;
+        const cell = el('div');
+        cell.appendChild(el('span', 'tt-val', f.text(v)));
+        const track = el('div', 'tt-track');
+        const bar = el('i');
+        bar.style.left = `${(Math.min(v, 0) - lo) / span * 100}%`;
+        bar.style.width = `${Math.abs(v) / span * 100}%`;
+        bar.style.background = f.signed && v > 0 ? C.accent : C.main;
+        track.appendChild(bar);
+        if (f.signed) {
+          const zero = el('b');
+          zero.style.left = `${-lo / span * 100}%`;
+          track.appendChild(zero);
+        }
+        cell.appendChild(track);
+        row.appendChild(cell);
+      });
+      box.appendChild(row);
+    });
+  }
+
+  function renderTypeList() {
+    const P = state.province;
+    const pc = P ? D.cluster[P] : null;
+    const box = $('type-list');
+    box.textContent = '';
+    clusterOrder.forEach((c) => {
+      const row = el('div', `tl-row${c === pc ? ' own' : ''}`);
+      const name = el('div', 'tl-name');
+      name.append(swatch(c), el('span', '', c), el('small', '', `${clusters[c].length} 省`));
+      const chips = el('div', 'tl-chips');
+      clusters[c].slice().sort((a, b) => D.net[b] - D.net[a]).forEach((p) => {
+        const chip = el('button', `chip${p === P ? ' on' : ''}`, short(p));
+        chip.type = 'button';
+        chip.dataset.p = p;
+        chips.appendChild(chip);
+      });
+      row.append(name, chips);
+      box.appendChild(row);
+    });
+  }
+
+  function renderType() {
+    renderTypeMap();
+    draw('chart-type-count', barOption('chart-type-count', clusterRows(), 124));
+    renderTypeProfile();
+    renderTypeList();
+  }
+
+  function renderPage() {
+    document.querySelectorAll('.nav-item').forEach((b) => b.classList.toggle('active', b.dataset.page === state.page));
+    document.querySelectorAll('.page').forEach((p) => p.classList.toggle('active', p.id === 'page-' + state.page));
+  }
+
+  // 所有交互都改 state 再调 render；只画当前页（隐藏页没有尺寸）
+  function render() {
+    $('sel-year').value = state.year;
+    $('sel-metric').value = state.metric;
+    $('sel-chip').hidden = !state.province;
+    $('sel-name').textContent = state.province || '';
+    renderPage();
+    if (state.page === 'overview') {
+      renderKpis();
+      renderMap();
+      renderRank();
+      renderTrend();
+      renderCluster();
+      renderOdTop();
+    } else if (state.page === 'flow') {
+      renderFlow();
+    } else if (state.page === 'type') {
+      renderType();
+    }
+  }
+
+  $('sel-year').innerHTML = years.slice().reverse().map((y) => `<option value="${y}">${y} 年</option>`).join('');
+  $('sel-year').addEventListener('change', (e) => { state.year = +e.target.value; render(); });
+  $('sel-metric').addEventListener('change', (e) => { state.metric = e.target.value; render(); });
+  $('btn-reset').addEventListener('click', () => { Object.assign(state, DEFAULTS); render(); });
+  $('sel-chip').addEventListener('click', () => setProvince(null));
+  $('type-list').addEventListener('click', (e) => {
+    const chip = e.target.closest('[data-p]');
+    if (chip) setProvince(chip.dataset.p);
+  });
+  document.querySelectorAll('.nav-item').forEach((b) =>
+    b.addEventListener('click', () => { state.page = b.dataset.page; render(); }));
+
+  render();
+})();
+</script>
+</body>
+</html>

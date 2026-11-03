@@ -1,0 +1,271 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>中国主要城市通勤监测驾驶舱</title>
+<!-- D4-5 存档点 · 完成版：数据只读 ./data.js（build_dashboard_data.py 生成）；ECharts 与地图读本地 ../../assets/，不走 CDN。
+     本地起服务：在项目根目录 python3 -m http.server 8000，打开 http://localhost:8000/apps/commute/
+     深链：?tab=cockpit|rank|typo&ind=指标名&y=2024&cal=w|a&city=北京 -->
+<style>
+  :root{--bg:#050d22;--panel:#0a1a3a;--line:#18366a;--ink:#e6f1ff;--muted:#8aa1c8;--main:#2ee6ff;--good:#5fe3a1;--bad:#ff6b6b;--acc:#ffc14d;--aux:#7c9cff}
+  html,body{margin:0;height:100%;background:var(--bg);overflow:hidden;font-family:"PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;color:var(--ink)}
+  #stage{width:1920px;height:1080px;transform-origin:0 0;position:absolute;left:0;top:0}
+  header{height:84px;display:flex;align-items:center;padding:0 24px;border-bottom:1px solid var(--line);gap:14px}
+  header h1{font-size:32px;margin:0;letter-spacing:2px}
+  header .sub{color:var(--muted);font-size:14px;margin-right:auto}
+  header select,header input,header button{background:var(--panel);color:var(--ink);border:1px solid var(--line);border-radius:6px;font-size:16px;padding:6px 10px}
+  header input{width:130px}header button{cursor:pointer}
+  .seg{display:flex;border:1px solid var(--line);border-radius:6px;overflow:hidden}.seg button{border:0;border-radius:0}.seg button.on{background:#0f5c8a;color:#fff}
+  .cal-note{color:var(--muted);font-size:13px;width:92px;line-height:1.3}
+  nav{position:absolute;left:0;top:85px;width:88px;bottom:40px;border-right:1px solid var(--line);display:flex;flex-direction:column;align-items:center;padding-top:16px;gap:10px}
+  nav a{writing-mode:vertical-rl;letter-spacing:6px;font-size:19px;color:var(--muted);padding:16px 10px;border-radius:8px;cursor:pointer}
+  nav a.on{color:#fff;background:linear-gradient(180deg,#0f7fb0,#0a3a6e)}
+  main{position:absolute;left:100px;top:96px;right:16px;bottom:44px}
+  .page{display:none;height:100%}.page.on{display:grid}
+  #cockpit{grid-template-columns:repeat(12,1fr);grid-template-rows:140px 1fr 1fr;gap:14px}
+  #rank{grid-template-columns:1fr;gap:14px}#typo{grid-template-columns:7fr 5fr;grid-template-rows:1fr 1fr;gap:14px}
+  .card,.box{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:14px 18px;box-sizing:border-box;min-height:0}
+  .card{grid-column:span 3}.card .k{color:var(--muted);font-size:16px}.card .v{font-size:40px;font-weight:700;margin-top:6px;color:var(--main)}
+  .card .v small{font-size:18px;color:var(--muted);margin-left:6px}.card .n{color:var(--muted);font-size:13px;margin-top:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .box h3{margin:0 0 6px;font-size:17px;font-weight:600}.box h3 span{color:var(--muted);font-size:13px;font-weight:400;margin-left:8px}
+  .chart{width:100%;height:calc(100% - 28px)}
+  #detail{display:none;position:absolute;inset:0;background:var(--bg);grid-template-columns:5fr 4fr 5fr;grid-template-rows:64px 1fr;gap:14px;z-index:5}
+  #detail.on{display:grid}
+  #dHead{grid-column:1/-1;display:flex;align-items:center;gap:16px}#dHead h2{margin:0;font-size:30px}#dHead .tag{border:1px solid var(--line);border-radius:14px;padding:3px 12px;color:var(--muted);font-size:15px}
+  #dHead button{margin-left:auto;background:var(--panel);color:var(--ink);border:1px solid var(--line);border-radius:6px;font-size:16px;padding:6px 16px;cursor:pointer}
+  #grid9{display:grid;grid-template-columns:repeat(3,1fr);grid-template-rows:repeat(3,1fr);gap:10px;height:calc(100% - 28px)}
+  .cell{border:1px solid var(--line);border-radius:8px;padding:10px;display:flex;flex-direction:column;justify-content:space-between}
+  .cell .t{font-size:14px;color:var(--muted)}.cell .x{font-size:28px;font-weight:700}.cell .r{font-size:13px;color:var(--muted)}
+  footer{position:absolute;left:100px;right:16px;bottom:8px;color:var(--muted);font-size:13px}
+  table{width:100%;border-collapse:collapse;font-size:15px}td{border-bottom:1px solid var(--line);padding:7px 6px;vertical-align:top}
+</style>
+</head>
+<body>
+<div id="stage">
+  <header>
+    <h1>中国主要城市通勤监测驾驶舱</h1><span class="sub" id="hint">45 城 · 中心城建成区通勤人口 · 点气泡或排行看城市详情</span>
+    指标 <select id="ind"></select>
+    年份 <select id="year"></select>
+    <input id="search" list="cityList" placeholder="搜城市"><datalist id="cityList"></datalist>
+    <div class="seg"><button id="calW">人口加权</button><button id="calA">算术平均</button></div><span class="cal-note" id="calNote"></span>
+    <button id="reset">重置</button>
+  </header>
+  <nav><a data-t="cockpit">驾驶舱</a><a data-t="rank">排名</a><a data-t="typo">分型</a></nav>
+  <main>
+    <section id="cockpit" class="page">
+      <div class="card"><div class="k" id="k1t"></div><div class="v" id="k1"></div><div class="n" id="k1n"></div></div>
+      <div class="card"><div class="k" id="k2t"></div><div class="v" id="k2"></div><div class="n" id="k2n"></div></div>
+      <div class="card"><div class="k" id="k3t"></div><div class="v" id="k3"></div><div class="n" id="k3n"></div></div>
+      <div class="card"><div class="k" id="k4t"></div><div class="v" id="k4"></div><div class="n" id="k4n"></div></div>
+      <div class="box" style="grid-column:span 3;grid-row:span 2"><h3 id="clsT"></h3><div class="chart" id="cls"></div></div>
+      <div class="box" style="grid-column:span 6;grid-row:span 2"><h3 id="mapT"></h3><div class="chart" id="map"></div></div>
+      <div class="box" style="grid-column:span 3"><h3 id="bestT"></h3><div class="chart" id="best"></div></div>
+      <div class="box" style="grid-column:span 3"><h3 id="worstT"></h3><div class="chart" id="worst"></div></div>
+    </section>
+    <section id="rank" class="page">
+      <div class="box"><h3 id="allT"></h3><div class="chart" id="all"></div></div>
+    </section>
+    <section id="typo" class="page">
+      <div class="box" style="grid-row:span 2"><h3 id="tmapT"></h3><div class="chart" id="tmap"></div></div>
+      <div class="box"><h3>四类城市画像<span>7 个参与聚类的指标 · 方向感知得分（越靠外越好）</span></h3><div class="chart" id="tradar"></div></div>
+      <div class="box"><h3>每类成员<span id="tsrc"></span></h3><div id="ttab" style="overflow:auto;height:calc(100% - 28px)"></div></div>
+    </section>
+    <section id="detail">
+      <div id="dHead"><h2 id="dName"></h2><span class="tag" id="dCls"></span><span class="tag" id="dTypo"></span><span class="tag" id="dRail"></span><button id="back">返回</button></div>
+      <div class="box"><h3 id="dRadarT"></h3><div class="chart" id="dradar"></div></div>
+      <div class="box"><h3 id="dGridT"></h3><div id="grid9"></div></div>
+      <div class="box"><h3 id="dTrendT"></h3><div class="chart" id="dtrend"></div></div>
+    </section>
+  </main>
+  <footer id="foot"></footer>
+</div>
+<script src="../../assets/echarts.min.js"></script>
+<script src="../../assets/china.js"></script>
+<script src="./data.js"></script>
+<script>
+const D = window.CM_DATA, M = D.meta, CT = M.cities, Y = M.years, IND = M.indicators, CLS = M.classes;
+const CLS_COL = ['#2ee6ff', '#7c9cff', '#ffc14d', '#5fe3a1'], TYPO_COL = ['#ff6b6b', '#ffc14d', '#7c9cff', '#5fe3a1'];
+const MUTED = '#8aa1c8', LINE = '#18366a', ACC = '#ffc14d';
+echarts.registerMap('china', window.CHINA_GEO);
+const q = new URLSearchParams(location.search);
+const S = {tab: q.get('tab') || 'cockpit', ind: Math.max(0, IND.findIndex(i => i.name === q.get('ind'))), y: +(q.get('y') || Y[Y.length - 1]), cal: q.get('cal') === 'a' ? 'a' : 'w', city: null};
+const charts = {}; const mk = id => (charts[id] = charts[id] || echarts.init(document.getElementById(id)));
+const $ = id => document.getElementById(id);
+const fmt = (v, d = 1) => v == null ? '—' : (+v).toLocaleString('zh-CN', {maximumFractionDigits: d, minimumFractionDigits: d});
+const axis = {axisLine: {lineStyle: {color: LINE}}, splitLine: {lineStyle: {color: LINE}}, axisLabel: {color: MUTED, fontSize: 13}};
+const vals = (i = S.ind, y = S.y) => D.values[i][Y.indexOf(y)];
+const ok = arr => arr.map((v, k) => ({k, v})).filter(d => d.v != null);
+// 跨城汇总：人口加权（七普常住人口，与报告「总体平均」一致）或算术平均；缺失不参与
+function mean(arr, ks, cal = S.cal) {
+  const d = ok(arr).filter(x => !ks || ks.includes(x.k));
+  if (!d.length) return null;
+  if (cal === 'a') return d.reduce((s, x) => s + x.v, 0) / d.length;
+  const w = d.reduce((s, x) => s + CT[x.k].pop, 0);
+  return d.reduce((s, x) => s + x.v * CT[x.k].pop, 0) / w;
+}
+// 方向感知得分：0 = 最差，1 = 最好；中性指标（dir = 0）只表示大小
+function score(i, y, k) {
+  const a = ok(vals(i, y)).map(d => d.v), v = vals(i, y)[k];
+  if (v == null) return null;
+  const lo = Math.min(...a), hi = Math.max(...a), t = hi === lo ? .5 : (v - lo) / (hi - lo);
+  return IND[i].dir === -1 ? 1 - t : t;
+}
+// 方向感知排名：并列同名次；中性指标按从大到小
+function rankOf(i, y, k) {
+  const a = vals(i, y), v = a[k];
+  if (v == null) return null;
+  const dir = IND[i].dir === -1 ? -1 : 1, d = ok(a);
+  return {r: 1 + d.filter(x => dir * x.v > dir * v).length, n: d.length};
+}
+const sorted = () => ok(vals()).sort((a, b) => (IND[S.ind].dir === -1 ? a.v - b.v : b.v - a.v));
+const COLORS = ['#ff5a5a', '#ff9f43', '#ffd56b', '#9ee37d', '#2ee6ff'];
+
+IND.forEach((o, i) => $('ind').add(new Option(o.name, i)));
+Y.slice().reverse().forEach(y => $('year').add(new Option(y, y)));
+CT.forEach(c => $('cityList').appendChild(new Option(c.short)));
+$('ind').onchange = e => { S.ind = +e.target.value; render(); };
+$('year').onchange = e => { S.y = +e.target.value; render(); };
+$('calW').onclick = () => { S.cal = 'w'; render(); };
+$('calA').onclick = () => { S.cal = 'a'; render(); };
+$('search').onchange = e => { const k = CT.findIndex(c => c.short === e.target.value.trim() || c.name === e.target.value.trim()); if (k >= 0) { S.city = k; render(); } };
+$('reset').onclick = () => { Object.assign(S, {tab: 'cockpit', ind: 0, y: Y[Y.length - 1], cal: 'w', city: null}); $('search').value = ''; render(); };
+$('back').onclick = () => { S.city = null; render(); };
+document.querySelectorAll('nav a').forEach(a => a.onclick = () => { S.tab = a.dataset.t; S.city = null; render(); });
+
+function kpis() {
+  const o = IND[S.ind], a = vals(), d = ok(a), s = sorted(), rep = M.reportMean[o.name][4];
+  const set = (n, t, v, x) => { $('k' + n + 't').textContent = t; $('k' + n).innerHTML = v; $('k' + n + 'n').textContent = x; };
+  const m = mean(a);
+  set(1, `${o.name} · 45 城总体`, `${fmt(m, 2)}<small>${o.unit}</small>`,
+      (S.cal === 'w' ? '人口加权（七普常住人口）' : '算术平均') + (rep != null ? ` · 报告公布 ${rep}，差 ${fmt(m - rep, 2)}` : ' · 报告未公布总体值'));
+  if (o.dir === 0) {
+    set(2, '最大（中性指标，不排优劣）', `${CT[s[0].k].short}<small>${fmt(s[0].v)} ${o.unit}</small>`, '城市越大，这个值越大，不代表通勤好坏');
+    set(3, '最小', `${CT[s[s.length - 1].k].short}<small>${fmt(s[s.length - 1].v)} ${o.unit}</small>`, '');
+  } else {
+    set(2, '最优城市', `${CT[s[0].k].short}<small>${fmt(s[0].v)} ${o.unit}</small>`, o.dir === 1 ? '越大越好' : '越小越好');
+    set(3, '最劣城市', `${CT[s[s.length - 1].k].short}<small>${fmt(s[s.length - 1].v)} ${o.unit}</small>`, o.dir === 1 ? '越大越好' : '越小越好');
+  }
+  const miss = a.map((v, k) => v == null ? CT[k].short : null).filter(Boolean);
+  set(4, `${S.y} 年有数据的城市`, `${d.length}<small>/ ${CT.length} 城</small>`, miss.length ? `缺 ${miss.length} 城（不参与均值、排名）：${miss.join('、')}` : '45 城齐全');
+}
+
+function cockpit() {
+  kpis();
+  const o = IND[S.ind], a = vals(), neutral = o.dir === 0, d = ok(a);
+  const lo = Math.min(...d.map(x => x.v)), hi = Math.max(...d.map(x => x.v));
+  $('mapT').innerHTML = `${o.name} · ${S.y}<span>${o.unit} · 气泡大小 = 数值；${neutral ? '中性指标：颜色只表示大小，不表示好坏' : '颜色按指标方向：绿 = 好，红 = 差'} · 灰色空心 = 缺失</span>`;
+  const col = k => { const t = neutral ? (a[k] - lo) / ((hi - lo) || 1) : score(S.ind, S.y, k); return neutral ? `rgba(46,230,255,${.35 + .65 * t})` : COLORS[Math.min(4, Math.floor(t * 5))]; };
+  mk('map').setOption({
+    tooltip: {formatter: p => `${p.name}<br>${o.name}：${p.data.raw == null ? '缺失（报告留空 / 未开通轨道）' : fmt(p.data.raw) + ' ' + o.unit}`},
+    geo: {map: 'china', roam: false, top: 10, bottom: 10, itemStyle: {areaColor: '#0b2350', borderColor: '#2f5c99'}, emphasis: {disabled: true}, silent: true},
+    series: [{type: 'scatter', coordinateSystem: 'geo', data: CT.map((c, k) => ({name: c.short, k, raw: a[k], value: [c.lon, c.lat],
+        symbolSize: a[k] == null ? 12 : 10 + 24 * (a[k] - lo) / ((hi - lo) || 1),
+        itemStyle: a[k] == null ? {color: 'transparent', borderColor: '#9aa7bd', borderWidth: 2} : {color: col(k), borderColor: '#06112a', borderWidth: 1}})),
+      label: {show: true, formatter: p => ['北京', '上海', '广州', '深圳', '重庆', '成都'].includes(p.name) ? p.name : '', position: 'right', color: '#cfe0ff', fontSize: 13}}]}, true);
+  // 分规模均值（按当前口径）+ 报告公布值（分规模 = 算术平均）
+  const cm = CLS.map((_, j) => mean(a, CT.map((c, k) => c.cls === j ? k : -1).filter(k => k >= 0)));
+  $('clsT').innerHTML = `分规模均值<span>${S.cal === 'w' ? '人口加权' : '算术平均'} · 折线 = 报告公布（分规模为算术平均）</span>`;
+  mk('cls').setOption({grid: {left: 56, right: 16, top: 30, bottom: 40}, tooltip: {trigger: 'axis'}, legend: {data: ['本平台', '报告公布'], textStyle: {color: MUTED}, top: 0},
+    xAxis: {type: 'category', data: CLS, ...axis, axisLabel: {color: '#cfe0ff', fontSize: 12, interval: 0}}, yAxis: {type: 'value', min: 0, ...axis},   // 柱图纵轴从 0 起，不截断（专题 B 陷阱 6）
+    series: [{name: '本平台', type: 'bar', barWidth: 34, data: cm.map((v, j) => ({value: v == null ? null : +v.toFixed(2), itemStyle: {color: CLS_COL[j]}})), label: {show: true, position: 'top', color: '#fff', formatter: p => fmt(p.value)}},
+      {name: '报告公布', type: 'line', data: M.reportMean[o.name].slice(0, 4), symbolSize: 9, lineStyle: {color: ACC, type: 'dashed'}, itemStyle: {color: ACC}}]}, true);
+  // 最优 / 最劣各 8（中性指标：最大 / 最小各 8）
+  const s = sorted(), top = s.slice(0, 8), bot = s.slice(-8).reverse();
+  $('bestT').innerHTML = `${neutral ? '最大' : '最优'} 8 城<span>${o.unit}</span>`; $('worstT').innerHTML = `${neutral ? '最小' : '最劣'} 8 城<span>${o.unit}</span>`;
+  const bar = (id, arr, c) => mk(id).setOption({grid: {left: 64, right: 50, top: 4, bottom: 4}, xAxis: {type: 'value', show: false, min: 0},
+    yAxis: {type: 'category', inverse: true, data: arr.map(x => CT[x.k].short), ...axis, axisLabel: {color: '#cfe0ff', fontSize: 13}},
+    series: [{type: 'bar', barWidth: 12, data: arr.map(x => ({value: x.v, k: x.k})), itemStyle: {color: c}, label: {show: true, position: 'right', color: '#cfe0ff', formatter: p => fmt(p.value)}}]}, true);
+  bar('best', top, neutral ? '#2ee6ff' : '#5fe3a1'); bar('worst', bot, neutral ? '#2b7fa8' : '#ff6b6b');
+}
+
+function rankPage() {
+  const o = IND[S.ind], s = sorted(), miss = vals().map((v, k) => v == null ? CT[k].short : null).filter(Boolean);
+  $('allT').innerHTML = `${o.name} · ${S.y} · 45 城排名<span>${o.dir === 0 ? '中性指标：从大到小，不排优劣' : o.dir === 1 ? '越大越好，从好到差' : '越小越好，从好到差'} · 颜色 = 城市规模${miss.length ? ' · 缺失不排名：' + miss.join('、') : ''}</span>`;
+  mk('all').setOption({grid: {left: 50, right: 20, top: 40, bottom: 70}, tooltip: {trigger: 'axis'},
+    legend: {data: CLS, top: 0, textStyle: {color: MUTED}}, xAxis: {type: 'category', data: s.map(x => CT[x.k].short), ...axis, axisLabel: {color: '#cfe0ff', fontSize: 13, rotate: 50, interval: 0}},
+    yAxis: {type: 'value', min: 0, name: o.unit, nameTextStyle: {color: MUTED}, ...axis},
+    series: CLS.map((n, j) => ({name: n, type: 'bar', stack: 'x', barWidth: 18, itemStyle: {color: CLS_COL[j]}, data: s.map(x => CT[x.k].cls === j ? {value: x.v, k: x.k} : '-')}))}, true);
+}
+
+function typoPage() {
+  const C = D.cluster, names = C.names, Y2 = Y[Y.length - 1];
+  $('tmapT').innerHTML = `45 城通勤分型<span>第二天 D2-5 · K-Means k = 4 · ${Y2} 年</span>`;
+  $('tsrc').textContent = `读 ${C.source}`;
+  mk('tmap').setOption({tooltip: {formatter: p => `${p.name}：${names[C.of[p.data.k]]}`},
+    legend: {data: names, left: 10, bottom: 10, orient: 'vertical', textStyle: {color: '#cfe0ff', fontSize: 15}},
+    geo: {map: 'china', roam: false, top: 10, bottom: 10, itemStyle: {areaColor: '#0b2350', borderColor: '#2f5c99'}, silent: true},
+    series: names.map((n, j) => ({name: n, type: 'scatter', coordinateSystem: 'geo', symbolSize: 16, itemStyle: {color: TYPO_COL[j], borderColor: '#06112a'},
+      data: CT.map((c, k) => C.of[k] === j ? {name: c.short, k, value: [c.lon, c.lat]} : null).filter(Boolean),
+      label: {show: true, formatter: p => ['北京', '上海', '深圳', '广州', '成都', '重庆', '海口'].includes(p.name) ? p.name : '', position: 'right', color: '#fff', fontSize: 14}}))}, true);
+  // 参与聚类的 7 个指标：有方向、且不含有缺失的轨道覆盖（见 D2-5 分型说明）
+  const used = IND.map((o, i) => i).filter(i => IND[i].dir !== 0 && !IND[i].name.startsWith('轨道'));
+  mk('tradar').setOption({legend: {data: names, bottom: 0, textStyle: {color: '#cfe0ff'}},
+    radar: {indicator: used.map(i => ({name: IND[i].name.replace('通勤', '').replace('比重', ''), max: 100})), radius: '62%', center: ['50%', '46%'],
+      axisName: {color: '#cfe0ff', fontSize: 12}, splitLine: {lineStyle: {color: LINE}}, splitArea: {show: false}, axisLine: {lineStyle: {color: LINE}}},
+    series: [{type: 'radar', data: names.map((n, j) => {
+      const ks = CT.map((c, k) => C.of[k] === j ? k : -1).filter(k => k >= 0);
+      return {name: n, value: used.map(i => +(100 * ks.reduce((s, k) => s + score(i, Y2, k), 0) / ks.length).toFixed(1)), lineStyle: {color: TYPO_COL[j], width: 2}, itemStyle: {color: TYPO_COL[j]}, areaStyle: {opacity: .08}};
+    })}]}, true);
+  $('ttab').innerHTML = '<table>' + names.map((n, j) => {
+    const m = CT.filter((c, k) => C.of[k] === j);
+    return `<tr><td style="width:150px;color:${TYPO_COL[j]};font-weight:600">${n}<br><span style="color:${MUTED};font-weight:400">${m.length} 城</span></td><td>${m.map(c => c.short).join('、')}<br><span style="color:${MUTED};font-size:13px">依据：${C.basis[n] || ''}</span></td></tr>`;
+  }).join('') + '</table>';
+}
+
+function detail() {
+  const k = S.city, c = CT[k], o = IND[S.ind];
+  $('dName').textContent = c.name; $('dCls').textContent = `${CLS[c.cls]} · ${c.prov}`;
+  $('dTypo').textContent = `分型：${D.cluster.of[k] == null ? '—' : D.cluster.names[D.cluster.of[k]]}`;
+  $('dRail').textContent = c.rail ? '已开通轨道' : '未开通轨道';
+  const peers = CT.map((x, j) => x.cls === c.cls ? j : -1).filter(j => j >= 0);
+  // 雷达：有方向的指标里，这个城市有值的那几项（没值的不画，标题注明）
+  const ids = IND.map((x, i) => i).filter(i => IND[i].dir !== 0 && vals(i)[k] != null);
+  const drop = IND.filter((x, i) => x.dir !== 0 && vals(i)[k] == null).map(x => x.name);
+  $('dRadarT').innerHTML = `九项指标画像 · ${S.y}<span>方向感知得分，越靠外越好 · 对比同规模均值${drop.length ? ' · 未画：' + drop.join('、') + (c.rail ? '（报告留空）' : '（未开通轨道）') : ''}</span>`;
+  mk('dradar').setOption({legend: {data: [c.short, `${CLS[c.cls]}均值`], bottom: 0, textStyle: {color: '#cfe0ff'}},
+    radar: {indicator: ids.map(i => ({name: IND[i].name.replace('通勤', '').replace('比重', ''), max: 100})), radius: '64%', center: ['50%', '46%'],
+      axisName: {color: '#cfe0ff', fontSize: 12}, splitLine: {lineStyle: {color: LINE}}, splitArea: {show: false}, axisLine: {lineStyle: {color: LINE}}},
+    series: [{type: 'radar', data: [
+      {name: c.short, value: ids.map(i => +(100 * score(i, S.y, k)).toFixed(1)), lineStyle: {color: ACC, width: 3}, itemStyle: {color: ACC}, areaStyle: {opacity: .15}},
+      {name: `${CLS[c.cls]}均值`, value: ids.map(i => { const s = peers.map(j => score(i, S.y, j)).filter(v => v != null); return +(100 * s.reduce((a, b) => a + b, 0) / s.length).toFixed(1); }),
+       lineStyle: {color: '#2ee6ff', type: 'dashed'}, itemStyle: {color: '#2ee6ff'}}]}]}, true);
+  // 九宫格：数值 + 方向感知排名
+  $('dGridT').innerHTML = `九项指标 · ${S.y}<span>排名在有数据的城市里算</span>`;
+  $('grid9').innerHTML = IND.map((x, i) => {
+    const v = vals(i)[k], r = rankOf(i, S.y, k);
+    const txt = v == null ? (x.name.startsWith('轨道') && !c.rail ? '未开通轨道' : '报告留空') : `${fmt(v)}<small style="font-size:14px;color:${MUTED}"> ${x.unit}</small>`;
+    const rk = v == null ? '不参与排名' : x.dir === 0 ? `中性，第 ${r.r} 大 / ${r.n}` : `第 ${r.r} / ${r.n}（${x.dir === 1 ? '越大越好' : '越小越好'}）`;
+    const t = v == null || x.dir === 0 ? null : score(i, S.y, k);
+    return `<div class="cell" style="${i === S.ind ? 'border-color:' + ACC : ''}"><div class="t">${x.name}</div><div class="x" style="color:${t == null ? '#cfe0ff' : COLORS[Math.min(4, Math.floor(t * 5))]}">${txt}</div><div class="r">${rk}</div></div>`;
+  }).join('');
+  // 三年趋势：当前指标，城市 vs 同规模均值 vs 45 城（当前口径）
+  $('dTrendT').innerHTML = `${o.name} · 三年趋势<span>${o.unit} · 45 城与同规模均值按${S.cal === 'w' ? '人口加权' : '算术平均'}</span>`;
+  mk('dtrend').setOption({grid: {left: 56, right: 20, top: 36, bottom: 30}, tooltip: {trigger: 'axis'}, legend: {data: [c.short, `${CLS[c.cls]}均值`, '45 城'], top: 0, textStyle: {color: MUTED}},
+    xAxis: {type: 'category', data: Y, ...axis}, yAxis: {type: 'value', scale: true, ...axis},
+    series: [{name: c.short, type: 'line', data: Y.map(y => vals(S.ind, y)[k]), connectNulls: false, symbolSize: 10, lineStyle: {color: ACC, width: 3}, itemStyle: {color: ACC}, label: {show: true, color: '#fff', formatter: p => fmt(p.value)}},
+      {name: `${CLS[c.cls]}均值`, type: 'line', data: Y.map(y => { const m = mean(vals(S.ind, y), peers); return m == null ? null : +m.toFixed(2); }), lineStyle: {color: '#2ee6ff', type: 'dashed'}, itemStyle: {color: '#2ee6ff'}},
+      {name: '45 城', type: 'line', data: Y.map(y => { const m = mean(vals(S.ind, y)); return m == null ? null : +m.toFixed(2); }), lineStyle: {color: MUTED, type: 'dotted'}, itemStyle: {color: MUTED}}]}, true);
+}
+
+function render() {
+  $('ind').value = S.ind; $('year').value = S.y;
+  $('calW').classList.toggle('on', S.cal === 'w'); $('calA').classList.toggle('on', S.cal === 'a');
+  $('calNote').textContent = S.cal === 'w' ? '与报告「总体平均」一致' : '会偏离报告的总体值';
+  document.querySelectorAll('nav a').forEach(a => a.classList.toggle('on', a.dataset.t === S.tab));
+  document.querySelectorAll('.page').forEach(s => s.classList.toggle('on', s.id === S.tab && S.city == null));
+  $('detail').classList.toggle('on', S.city != null);
+  if (S.city != null) detail(); else ({cockpit, rank: rankPage, typo: typoPage})[S.tab]();
+  resizeVisible();
+  $('foot').textContent = `数据：${M.source}　｜　调查期 ${M.survey}；指标口径为中心城建成区通勤人口；缺失不补 0、不参与均值和排名；通勤空间半径为中性指标，不排优劣`;
+}
+// 只给看得见的图表 resize：隐藏面板宽高为 0，resize 会报 drawImage width 0
+function resizeVisible() { Object.entries(charts).forEach(([id, c]) => { if ($(id).offsetWidth) c.resize(); }); }
+const open = p => { if (p.data && p.data.k != null) { S.city = p.data.k; render(); } };
+['map', 'best', 'worst', 'all', 'tmap'].forEach(id => mk(id).on('click', open));
+function fit() { const s = Math.min(innerWidth / 1920, innerHeight / 1080); $('stage').style.transform = `scale(${s})`; }
+addEventListener('resize', () => { fit(); resizeVisible(); });
+const qc = q.get('city'); if (qc) { const k = CT.findIndex(c => c.short === qc || c.name === qc); if (k >= 0) S.city = k; }
+fit(); render();
+</script>
+</body>
+</html>
