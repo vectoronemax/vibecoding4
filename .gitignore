@@ -8,3 +8,6 @@ dist/
 .DS_Store
 __pycache__/
 *.pyc
+
+# 知识图谱大屏从 Yuxi 拉下来的原始子图：可能含内部知识库的文档内容，默认不进仓库
+apps/kg-cockpit/yuxi/
