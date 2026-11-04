@@ -1,6 +1,8 @@
 """把质检规则库（和可选的 Yuxi 图谱）整理成知识图谱大屏的数据层 apps/kg-cockpit/data.js。
 
-用法（项目根目录）：python3 apps/kg-cockpit/build_data.py
+用法（项目根目录）：
+  python3 apps/kg-cockpit/build_data.py                      # 用参考规则库
+  python3 apps/kg-cockpit/build_data.py --rules 你的规则库.yaml  # 换成自己的（或埋错练习版）
 
 输入（只读）：
   资料/质检智能体/规则库_参考.yaml          规则、依据文件、用词与严重度、明确不查的条文
@@ -14,6 +16,7 @@
 图谱的每个实体、每条关系都能在 YAML 的某个字段里找到出处，不靠大模型抽取；
 解析不了的依据、认不出的用地代码会列出来并中止，不静默丢弃。
 """
+import argparse
 import json
 import re
 import sys
@@ -95,6 +98,31 @@ def split_top(s, sep="；"):
     if cur.strip():
         parts.append(cur.strip())
     return parts
+
+
+def quote_diff(frag, pool):
+    """原文片段和摘录逐字比，列出差在哪：原文「80」↔ 摘录「100」、摘录多「见附录二」。
+
+    摘录是该规则所有依据条文拼起来的，先用最长公共片段定位到对应那一段，再比；
+    两头多出来的摘录文字是别的条文，不算差异。
+    """
+    anchor = SequenceMatcher(None, frag, pool, autojunk=False).find_longest_match(0, len(frag), 0, len(pool))
+    lo = max(0, anchor.b - anchor.a - 20)
+    window = pool[lo:anchor.b + (len(frag) - anchor.a) + 20]
+    ops = SequenceMatcher(None, frag, window, autojunk=False).get_opcodes()
+    while ops and ops[0][0] == "insert":
+        ops.pop(0)
+    while ops and ops[-1][0] == "insert":
+        ops.pop()
+    out = []
+    for tag, i1, i2, j1, j2 in ops:
+        if tag == "replace":
+            out.append(f"原文「{frag[i1:i2]}」↔ 摘录「{window[j1:j2]}」")
+        elif tag == "delete":
+            out.append(f"原文多「{frag[i1:i2]}」")
+        elif tag == "insert":
+            out.append(f"摘录多「{window[j1:j2]}」")
+    return out
 
 
 def norm_text(s):
@@ -374,6 +402,8 @@ def build_rules_graph():
                 ratio = min(max(SequenceMatcher(None, f, pool[i:i + len(f) + 20]).ratio()
                                 for i in range(0, max(1, len(pool) - len(f) + 1), 4)) for f in frags)
                 status = f"近似一致（相似度 {ratio:.2f}）" if ratio >= 0.85 else f"有出入（相似度 {ratio:.2f}）"
+                diffs = [d for f in frags if f not in pool for d in quote_diff(f, pool)]
+                g.nodes[ri]["p"]["摘录差异"] = "；".join(diffs[:6]) + ("…" if len(diffs) > 6 else "")
             else:
                 status = "摘录未收录对应条文"
         g.nodes[ri]["p"]["摘录核对"] = status
@@ -453,8 +483,9 @@ def build_rules_graph():
     check("规则类别", len(cat_idx), None, ok=len(cat_idx) > 0, note="、".join(cat_idx))
     check("条文节点在摘录里找到原文", f"{clause_in}/{clause_total}", None, ok=True,
           note="未收录：" + "、".join(n["n"] for n in g.nodes if g.types[n["t"]] == "条文" and n["p"]["摘录"] != "已收录"))
+    # 近似一致也要人看：数字抄错（2 公顷 → 3 公顷）相似度照样在 0.9 以上
     check("规则「原文」与摘录逐字一致", len(quote_stat.get("逐字一致", [])), None, ok=True,
-          warn=bool(quote_stat.get("有出入") or quote_stat.get("摘录未收录对应条文")),
+          warn=bool(quote_stat.get("近似一致") or quote_stat.get("有出入") or quote_stat.get("摘录未收录对应条文")),
           note="；".join(f"{k} {len(v)} 条：{'、'.join(v)}" for k, v in quote_stat.items() if k != "逐字一致"))
     check("用词→严重度 与规则写的严重度一致", word_stat["一致"], None, ok=not word_stat["不一致"],
           note="；".join(word_stat["不一致"] + word_stat["无法核对"]))
@@ -491,8 +522,8 @@ def build_rules_graph():
     return g.export(
         desc="从规则库 YAML 逐字段整理：规则—依据条文—依据文件、规则—用词—严重度、规则—适用用地。每条关系都能回到 YAML 的某个字段。",
         version=lib["版本"],
-        source=["资料/质检智能体/规则库_参考.yaml", "资料/质检智能体/上海控规质检_条文摘录.md"],
-        footer=f"规则库：资料/质检智能体/规则库_参考.yaml（{lib['版本']}）｜条文：上海公开发布文件摘录（准则2016、成果规范2020、技术规定、绿化审核），"
+        source=[relpath(RULES_YAML), relpath(EXCERPT_MD)],
+        footer=f"规则库：{relpath(RULES_YAML)}（{lib['版本']}）｜条文：上海公开发布文件摘录（准则2016、成果规范2020、技术规定、绿化审核），"
                "正式质检以主管部门口径和现行文本为准｜图谱数据结构对齐 Yuxi /api/graph/subgraph（xerrors/Yuxi，MIT）",
         tree=tree, checks=checks,
     )
@@ -564,7 +595,20 @@ def build_yuxi_graph(path):
     )
 
 
+def relpath(path):
+    path = Path(path).resolve()
+    return str(path.relative_to(ROOT)) if path.is_relative_to(ROOT) else path.name
+
+
 def main():
+    global RULES_YAML
+    ap = argparse.ArgumentParser(description="生成知识图谱大屏的数据层 data.js")
+    ap.add_argument("--rules", type=Path, default=RULES_YAML, help=f"规则库 YAML，默认 {relpath(RULES_YAML)}")
+    args = ap.parse_args()
+    if not args.rules.exists():
+        fail(f"找不到规则库 {args.rules}")
+    RULES_YAML = args.rules
+    print(f"规则库：{relpath(RULES_YAML)}")
     graphs = [build_rules_graph()]
     for path in sorted(YUXI_DIR.glob("*.json")) if YUXI_DIR.exists() else []:
         graphs.append(build_yuxi_graph(path))
