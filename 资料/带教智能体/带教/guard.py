@@ -14,8 +14,14 @@ import sys
 讲师文件 = ["带教/", "data/", "资料/", "存档点/", ".claude/skills/coach/", ".claude/settings.json", "学习进度.json"]
 
 
+def _规范(路径):
+    """统一成正斜杠；Windows 上路径不分大小写，统一成小写再比。"""
+    路径 = 路径.replace("\\", "/")
+    return 路径.lower() if os.name == "nt" else 路径
+
+
 def _命中(相对, 规则):
-    规则 = 规则.strip().replace("\\", "/")
+    规则 = _规范(规则.strip())
     while 规则.startswith("./"):
         规则 = 规则[2:]
     if not 规则:
@@ -40,7 +46,10 @@ def main():
         return 0
     根 = os.path.abspath(os.environ.get("CLAUDE_PROJECT_DIR") or 输入.get("cwd") or os.getcwd())
     绝对 = os.path.abspath(os.path.join(根, 路径))
-    相对 = os.path.relpath(绝对, 根).replace("\\", "/")
+    try:
+        相对 = _规范(os.path.relpath(绝对, 根))
+    except ValueError:      # Windows 上不在同一个盘：肯定不在项目里
+        return 0
     if 相对.startswith("../") or 相对 == "..":
         return 0
     for 规则 in 讲师文件:
